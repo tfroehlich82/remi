@@ -208,23 +208,18 @@ class Widget(Tag):
                     self.children[key].style['float'] = 'left'
 
     def onfocus(self):
-        return self.eventManager.propagate(self.EVENT_ONFOCUS, list())
+        return self.eventManager.propagate(self.EVENT_ONFOCUS, [])
 
     def set_on_focus_listener(self, listener, funcname):
-        self.attributes[
-            self.EVENT_ONFOCUS] = "sendCallback('" + str(id(self)) + "','" + self.EVENT_ONFOCUS + "');"
-        #self.attributes[ self.EVENT_ONFOCUS ]=" var id=\'id=\'+'"+str(id(self))+"' ;sendCommand('" + self.BASE_ADDRESS + str(id(self)) + "/" + self.EVENT_ONFOCUS + "',id);"
-        self.eventManager.register_listener(
-            self.EVENT_ONFOCUS, listener, funcname)
+        self.attributes[self.EVENT_ONFOCUS] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONFOCUS)
+        self.eventManager.register_listener(self.EVENT_ONFOCUS, listener, funcname)
 
     def onblur(self):
-        return self.eventManager.propagate(self.EVENT_ONBLUR, list())
+        return self.eventManager.propagate(self.EVENT_ONBLUR, [])
 
     def set_on_blur_listener(self, listener, funcname):
-        self.attributes[
-            self.EVENT_ONBLUR] = "sendCallback('" + str(id(self)) + "','" + self.EVENT_ONBLUR + "');"
-        self.eventManager.register_listener(
-            self.EVENT_ONBLUR, listener, funcname)
+        self.attributes[self.EVENT_ONBLUR] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONBLUR)
+        self.eventManager.register_listener(self.EVENT_ONBLUR, listener, funcname)
 
     def show(self, baseAppInstance):
         """Allows to show the widget as root window"""
@@ -240,13 +235,11 @@ class Widget(Tag):
             self.baseAppInstance.client.root = self.oldRootWidget
 
     def onclick(self):
-        return self.eventManager.propagate(self.EVENT_ONCLICK, list())
+        return self.eventManager.propagate(self.EVENT_ONCLICK, [])
 
     def set_on_click_listener(self, listener, funcname):
-        self.attributes[
-            self.EVENT_ONCLICK] = "sendCallback('" + str(id(self)) + "','" + self.EVENT_ONCLICK + "');"
-        self.eventManager.register_listener(
-            self.EVENT_ONCLICK, listener, funcname)
+        self.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONCLICK)
+        self.eventManager.register_listener(self.EVENT_ONCLICK, listener, funcname)
 
 
 class Button(Widget):
@@ -258,29 +251,18 @@ class Button(Widget):
     def __init__(self, w, h, text=''):
         super(Button, self).__init__(w, h)
         self.type = 'button'
-        #self.attributes[self.EVENT_ONCLICK] = "var params={};params['x']=1;params['y']=3;sendCallback('" + str(id(self)) + "','" + self.EVENT_ONCLICK + "',params);"
-        self.attributes[
-            self.EVENT_ONCLICK] = "sendCallback('" + str(id(self)) + "','" + self.EVENT_ONCLICK + "');"
+        self.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONCLICK)
         self.set_text(text)
 
     def set_text(self, t):
         self.append('text', t)
 
     def onclick(self):
-        debug_message('Button pressed: ', self.children['text'])
-        return self.eventManager.propagate(self.EVENT_ONCLICK, list())
+        return self.eventManager.propagate(self.EVENT_ONCLICK, [])
 
     def set_on_click_listener(self, listener, funcname):
-        """Register a listener for the click event.
-
-        listener = class instance
-        funcname = the name of member function that will be called.
-        example:
-            bt.set_on_click_listener( listenerClass, "ontest" )
-
-        """
-        self.eventManager.register_listener(
-            self.EVENT_ONCLICK, listener, funcname)
+        self.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONCLICK)
+        self.eventManager.register_listener(self.EVENT_ONCLICK, listener, funcname)
 
 
 class TextInput(Widget):
@@ -288,14 +270,14 @@ class TextInput(Widget):
     """multiline text area widget implements the onclick event.
     """
 
-    def __init__(self, w, h, single_line = True):
+    def __init__(self, w, h, single_line=True):
         super(TextInput, self).__init__(w, h)
         self.type = 'textarea'
 
         self.attributes[self.EVENT_ONCLICK] = ''
-        self.attributes[self.EVENT_ONCHANGE] = "var params={};params['newValue']=document.getElementById('" + str(
-            id(self)) + "').value;sendCallbackParam('" + str(id(self)) + "','" + self.EVENT_ONCHANGE + "',params);"
-
+        self.attributes[self.EVENT_ONCHANGE] = \
+            "var params={};params['newValue']=document.getElementById('%(id)s').value;"\
+            "sendCallbackParam('%(id)s','%(evt)s',params);" % {'id':id(self), 'evt':self.EVENT_ONCHANGE}
         self.set_text('')
 
         if single_line:
@@ -319,37 +301,29 @@ class TextInput(Widget):
     def onchange(self, newValue):
         """returns the new text value."""
         self.set_text(newValue)
-        params = list()
-        params.append(newValue)
-        return self.eventManager.propagate(self.EVENT_ONCHANGE, params)
+        return self.eventManager.propagate(self.EVENT_ONCHANGE, [newValue])
 
     def set_on_change_listener(self, listener, funcname):
         """register the listener for the onchange event."""
-        self.eventManager.register_listener(
-            self.EVENT_ONCHANGE, listener, funcname)
+        self.eventManager.register_listener(self.EVENT_ONCHANGE, listener, funcname)
 
     def onclick(self):
-        return self.eventManager.propagate(self.EVENT_ONCLICK, list())
+        return self.eventManager.propagate(self.EVENT_ONCLICK, [])
 
     def set_on_click_listener(self, listener, funcname):
-        self.attributes[
-            self.EVENT_ONCLICK] = "sendCallback('" + str(id(self)) + "','" + self.EVENT_ONCLICK + "');"
-        self.eventManager.register_listener(
-            self.EVENT_ONCLICK, listener, funcname)
-            
+        self.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONCLICK)
+        self.eventManager.register_listener(self.EVENT_ONCLICK, listener, funcname)
+
     def onkeydown(self,newValue):
         """returns the new text value."""
         self.set_text(newValue)
-        params = list()
-        params.append(newValue)
-        return self.eventManager.propagate(self.EVENT_ONKEYDOWN, params)
+        return self.eventManager.propagate(self.EVENT_ONKEYDOWN, [newValue])
         
     def set_on_key_down_listener(self,listener,funcname):
-        self.attributes[
-            self.EVENT_ONKEYDOWN] = "var params={};params['newValue']=document.getElementById('" + str(
-            id(self)) + "').value;sendCallbackParam('" + str(id(self)) + "','" + self.EVENT_ONKEYDOWN + "',params);"
-        self.eventManager.register_listener(
-            self.EVENT_ONKEYDOWN, listener, funcname)
+        self.attributes[self.EVENT_ONKEYDOWN] = \
+            "var params={};params['newValue']=document.getElementById('%(id)s').value;"\
+            "sendCallbackParam('%(id)s','%(evt)s',params);" % {'id':id(self), 'evt':self.EVENT_ONKEYDOWN}
+        self.eventManager.register_listener(self.EVENT_ONKEYDOWN, listener, funcname)
 
 
 class Label(Widget):
@@ -366,13 +340,11 @@ class Label(Widget):
         return self.children['text']
         
     def onclick(self):
-        return self.eventManager.propagate(self.EVENT_ONCLICK, list())
+        return self.eventManager.propagate(self.EVENT_ONCLICK, [])
 
     def set_on_click_listener(self, listener, funcname):
-        self.attributes[
-            self.EVENT_ONCLICK] = "sendCallback('" + str(id(self)) + "','" + self.EVENT_ONCLICK + "');"
-        self.eventManager.register_listener(
-            self.EVENT_ONCLICK, listener, funcname)
+        self.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONCLICK)
+        self.eventManager.register_listener(self.EVENT_ONCLICK, listener, funcname)
 
 
 class GenericDialog(Widget):
@@ -409,8 +381,8 @@ class GenericDialog(Widget):
         self.append('3', self.container)
         self.append('4', hlay)
 
-        self.conf.attributes[self.EVENT_ONCLICK] = "sendCallback('" + str(id(self)) + "','" + self.EVENT_ONCONFIRM + "');"
-        self.cancel.attributes[self.EVENT_ONCLICK] = "sendCallback('" + str(id(self)) + "','" + self.EVENT_ONCANCEL + "');"
+        self.conf.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONCONFIRM)
+        self.cancel.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONCANCEL)
 
         self.inputs = {}
 
@@ -420,47 +392,44 @@ class GenericDialog(Widget):
         fields_spacing = 5
         field_height = from_pix(field.style['height']) + fields_spacing*2
         field_width = from_pix(field.style['width']) + fields_spacing*4
-        self.style['height'] = to_pix( from_pix(self.style['height']) + field_height)
+        self.style['height'] = to_pix(from_pix(self.style['height']) + field_height)
         self.container.style['height'] = to_pix(from_pix(self.container.style['height']) + field_height)
         self.inputs[key] = field
-        label = Label( (self.width-20)-field_width-1, 30, labelDescription )
-        container = Widget(self.width-20, field_height , Widget.LAYOUT_HORIZONTAL, fields_spacing)
+        label = Label(self.width-20-field_width-1, 30, labelDescription )
+        container = Widget(self.width-20, field_height, Widget.LAYOUT_HORIZONTAL, fields_spacing)
         container.append('lbl' + key,label)
-        container.append(key,self.inputs[key])
-        self.container.append(key,container)
+        container.append(key, self.inputs[key])
+        self.container.append(key, container)
         
     def add_field(self,key,field):
         fields_spacing = 5
         field_height = from_pix(field.style['height']) + fields_spacing*2
         field_width = from_pix(field.style['width']) + fields_spacing*4
-        self.style['height'] = to_pix( from_pix(self.style['height']) + field_height)
+        self.style['height'] = to_pix(from_pix(self.style['height']) + field_height)
         self.container.style['height'] = to_pix(from_pix(self.container.style['height']) + field_height)
         self.inputs[key] = field
-        container = Widget(self.width-20, field_height , Widget.LAYOUT_HORIZONTAL, fields_spacing)
-        container.append(key,self.inputs[key])
-        self.container.append(key,container)
+        container = Widget(self.width-20, field_height, Widget.LAYOUT_HORIZONTAL, fields_spacing)
+        container.append(key, self.inputs[key])
+        self.container.append(key, container)
 
-    def get_field(self,key):
+    def get_field(self, key):
         return self.inputs[key]
 
     def confirm_dialog(self):
         """event called pressing on OK button.
         """
         self.hide()
-        params = list()
-        return self.eventManager.propagate(self.EVENT_ONCONFIRM, params)
+        return self.eventManager.propagate(self.EVENT_ONCONFIRM, [])
 
     def set_on_confirm_dialog_listener(self, listener, funcname):
-        self.eventManager.register_listener(
-            self.EVENT_ONCONFIRM, listener, funcname)
+        self.eventManager.register_listener(self.EVENT_ONCONFIRM, listener, funcname)
 
     def cancel_dialog(self):
         self.hide()
-        return self.eventManager.propagate(self.EVENT_ONCANCEL, list())
+        return self.eventManager.propagate(self.EVENT_ONCANCEL, [])
 
     def set_on_cancel_dialog_listener(self, listener, funcname):
-        self.eventManager.register_listener(
-            self.EVENT_ONCANCEL, listener, funcname)
+        self.eventManager.register_listener(self.EVENT_ONCANCEL, listener, funcname)
 
 
 class InputDialog(GenericDialog):
@@ -474,7 +443,7 @@ class InputDialog(GenericDialog):
         self.inputText = TextInput(width - 20, 30)
         self.add_field('textinput',self.inputText)
 
-        self.EVENT_ONCONFIRMVALUE = 'confirm_value'        
+        self.EVENT_ONCONFIRMVALUE = 'confirm_value'
         self.set_on_confirm_dialog_listener(self, 'confirm_value')
 
     def confirm_value(self):
@@ -482,13 +451,10 @@ class InputDialog(GenericDialog):
         propagates the string content of the input field
         """
         self.hide()
-        params = list()
-        params.append(self.inputText.get_text())
-        return self.eventManager.propagate(self.EVENT_ONCONFIRMVALUE, params)
+        return self.eventManager.propagate(self.EVENT_ONCONFIRMVALUE, [self.inputText.get_text()])
 
     def set_on_confirm_value_listener(self, listener, funcname):
-        self.eventManager.register_listener(
-            self.EVENT_ONCONFIRMVALUE, listener, funcname)
+        self.eventManager.register_listener(self.EVENT_ONCONFIRMVALUE, listener, funcname)
 
 
 class ListView(Widget):
@@ -672,8 +638,7 @@ class DropDownItem(Widget):
         return self.eventManager.propagate(self.EVENT_ONCLICK, [])
 
     def set_on_click_listener(self, listener, funcname):
-        self.attributes[self.EVENT_ONCLICK] = "sendCallback('%(id)s','%(evt)s');" % {'id':id(self),
-                                                                                     'evt':self.EVENT_ONCLICK}
+        self.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONCLICK)
         self.eventManager.register_listener(self.EVENT_ONCLICK, listener, funcname)
 
     def set_text(self, text):
@@ -704,8 +669,7 @@ class Image(Widget):
         return self.eventManager.propagate(self.EVENT_ONCLICK, [])
 
     def set_on_click_listener(self, listener, funcname):
-        self.attributes[self.EVENT_ONCLICK] = "sendCallback('%(id)s','%(evt)s');" % {'id':id(self),
-                                                                                     'evt':self.EVENT_ONCLICK}
+        self.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONCLICK)
         self.eventManager.register_listener(self.EVENT_ONCLICK, listener, funcname)
 
 
