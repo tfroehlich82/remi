@@ -25,16 +25,13 @@ except:
 import mimetypes
 import webbrowser
 import struct
-import string
-import binascii
 from base64 import b64encode
 import hashlib
-from hashlib import sha1
 import sys
 import threading
 import signal
 import time
-import os.path
+import os
 import re
 from threading import Timer
 try:
@@ -481,7 +478,7 @@ ws.onerror = function(evt){
 
         self.client = clients[k]
 
-        if updateTimerStarted == False:
+        if not updateTimerStarted:
             updateTimerStarted = True
             Timer(self.server.update_interval, update_clients, (self.server.update_interval,)).start()
 
@@ -510,14 +507,12 @@ ws.onerror = function(evt){
                     # The field contains an uploaded file
                     file_data = field_item.file.read()
                     file_len = len(file_data)
-                    #print('FILE DATA: ' + str(file_data))
-                    debug_message('\tUploaded %s as "%s" (%d bytes)\n' % \
-                            (field, field_item.filename, file_len))
+                    debug_message('\tUploaded %s as "%s" (%d bytes)\n' % (field, field_item.filename, file_len))
                 else:
                     # Regular form value
                     debug_message('\t%s=%s\n' % (field, form[field].value))
 
-            if file_data!=None: #self.path=='/fileupload':
+            if file_data is not None:
                 debug_message('GUI - server.py do_POST: fileupload path=' + savepath + '   name=' + filename)
                 with open(savepath+filename,'wb') as f:
                     f.write(file_data)
@@ -531,14 +526,8 @@ ws.onerror = function(evt){
     def do_GET(self):
         """Handler for the GET requests."""
         self.instance()
-        params = str(unquote(self.path))
-
-        params = params.split('?')
-        function = params[0]
-
-        function = function[1:]
-        self.process_all(function)
-
+        path = str(unquote(self.path))
+        self.process_all(path)
         return
 
     def process_all(self, function):
@@ -571,7 +560,7 @@ ws.onerror = function(evt){
             if self.server.enable_file_cache:
                 self.send_header('Cache-Control', 'public, max-age=86400')
             self.end_headers()
-            with open(filename, 'r+b') as f:
+            with open(filename, 'rb') as f:
                 content = f.read()
                 self.wfile.write(content)
         elif attr_call:
@@ -636,8 +625,8 @@ class Server(object):
                                            (wshost, wsport), self._multiple_instance, self._enable_file_cache,
                                            self._update_interval, *userdata)
         shost, sport = self._sserver.socket.getsockname()[:2]
-        #when listening on multiple net interfaces the browsers connects to localhost
-        if shost=='0.0.0.0':
+        # when listening on multiple net interfaces the browsers connects to localhost
+        if shost == '0.0.0.0':
             shost = '127.0.0.1'
         base_address = 'http://%s:%s/' % (shost,sport)
         debug_message('Started httpserver %s' % base_address)
@@ -646,7 +635,11 @@ class Server(object):
                 import android
                 android.webbrowser.open(base_address)
             except:
-                webbrowser.open(base_address)
+                # use default browser instead of always forcing IE on Windows
+                if os.name == 'nt':
+                    webbrowser.get('windows-default').open('file://' + os.path.realpath(base_address))
+                else:
+                    webbrowser.open(base_address)
         self._sth = threading.Thread(target=self._sserver.serve_forever)
         self._sth.daemon = True
         self._sth.start()
