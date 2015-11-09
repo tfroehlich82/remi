@@ -283,7 +283,7 @@ def parse_parametrs(p):
             if fieldValue.count("'") == 0 and fieldValue.count('"') == 0:
                 if fieldValue.count('.') == 1 and fieldValue.replace('.','').isdigit():
                     fieldValue = float(fieldValue)
-                if fieldValue.isdigit():
+                elif fieldValue.isdigit():
                     fieldValue = int(fieldValue)
             ret[fieldName] = fieldValue
     return ret
@@ -427,11 +427,11 @@ ws.onmessage = function (evt) {
     index = received_msg.indexOf(',')+1;
     var content = received_msg.substr(index,received_msg.length-index);
     if( command=='show_window' ){
-        document.body.innerHTML = unescape(content);
+        document.body.innerHTML = decodeURIComponent(content);
     }else if( command=='update_widget'){
         var elem = document.getElementById(s[1]);
         var index = received_msg.indexOf(',')+1;
-        elem.insertAdjacentHTML('afterend',unescape(content));
+        elem.insertAdjacentHTML('afterend',decodeURIComponent(content));
         elem.parentElement.removeChild(elem);
     }else if( command=='insert_widget'){
         if( document.getElementById(s[1])==null ){
@@ -439,7 +439,7 @@ ws.onmessage = function (evt) {
             index = content.indexOf(',')+1;
             content = content.substr(index,content.length-index);
             var elem = document.getElementById(s[2]);
-            elem.innerHTML = elem.innerHTML + unescape(content);
+            elem.innerHTML = elem.innerHTML + decodeURIComponent(content);
         }
     }
     console.debug('command:' + command);
@@ -637,7 +637,7 @@ class Server(object):
             except:
                 # use default browser instead of always forcing IE on Windows
                 if os.name == 'nt':
-                    webbrowser.get('windows-default').open('file://' + os.path.realpath(base_address))
+                    webbrowser.get('windows-default').open(base_address)
                 else:
                     webbrowser.open(base_address)
         self._sth = threading.Thread(target=self._sserver.serve_forever)
