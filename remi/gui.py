@@ -837,6 +837,16 @@ class Slider(Input):
         self.attributes['min'] = str(min)
         self.attributes['max'] = str(max)
         self.attributes['step'] = str(step)
+        self.EVENT_ONINPUT = 'oninput'
+
+    def oninput(self, newValue):
+        return self.eventManager.propagate(self.EVENT_ONINPUT, [newValue])
+
+    def set_oninput_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONINPUT] = \
+            "var params={};params['newValue']=document.getElementById('%(id)s').value;"\
+            "sendCallbackParam('%(id)s','%(evt)s',params);" % {'id':id(self), 'evt':self.EVENT_ONINPUT}
+        self.eventManager.register_listener(self.EVENT_ONINPUT, listener, funcname)
 
 
 class ColorPicker(Input):
@@ -1188,3 +1198,33 @@ class FileDownloader(Widget):
                    'Content-Disposition':'attachment; filename=%s' % os.path.basename(self._filename)}
         return [content,headers]
 
+
+class Link(Widget):
+
+    def __init__(self, w, h, url, text, open_new_window=True):
+        super(Link, self).__init__(w, h)
+        self.type = 'a'
+        self.attributes['href'] = url
+        if open_new_window:
+            self.attributes['target'] = "_blank"
+        self.set_text(text)
+
+    def set_text(self, t):
+        self.append('text', t)
+
+    def get_text(self):
+        return self.children['text']
+
+    def get_url(self):
+        return self.children['href']
+
+
+class VideoPlayer(Widget):
+
+    def __init__(self, w, h, video, poster=None):
+        super(VideoPlayer, self).__init__(w, h, Widget.LAYOUT_HORIZONTAL)
+        self.type = 'video'
+        self.attributes['src'] = video
+        self.attributes['preload'] = 'auto'
+        self.attributes['controls'] = None
+        self.attributes['poster'] = poster

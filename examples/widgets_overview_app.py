@@ -27,7 +27,7 @@ class MyApp(App):
         super(MyApp, self).idle()
         
     def main(self):
-        verticalContainer = gui.Widget(640, 680, gui.Widget.LAYOUT_VERTICAL, 10)
+        verticalContainer = gui.Widget(640, 900, gui.Widget.LAYOUT_VERTICAL, 10)
 
         horizontalContainer = gui.Widget(620, 620, gui.Widget.LAYOUT_HORIZONTAL, 10)
 
@@ -93,6 +93,8 @@ class MyApp(App):
         self.listView.append('2', li2)
         self.listView.append('3', li3)
 
+        self.link = gui.Link(200, 20, "http://localhost:8081", "A link to here")
+
         self.dropDown = gui.DropDown(200, 20)
         c0 = gui.DropDownItem(200, 20, 'DropDownItem 0')
         c1 = gui.DropDownItem(200, 20, 'DropDownItem 1')
@@ -109,6 +111,8 @@ class MyApp(App):
 
         self.date = gui.Date(200, 20, '2015-04-13')
         self.date.set_on_change_listener(self, 'date_changed')
+
+        self.video = gui.VideoPlayer(480, 270, 'http://www.w3schools.com/tags/movie.mp4', 'http://www.oneparallel.com/wp-content/uploads/2011/01/placeholder.jpg')
 
         # appending a widget to another, the first argument is a string key
         subContainerRight.append('1', self.lbl)
@@ -129,6 +133,8 @@ class MyApp(App):
         subContainerLeft.append('0', self.img)
         subContainerLeft.append('1', self.table)
         subContainerLeft.append('2', self.listView)
+        subContainerLeft.append('3', self.link)
+        subContainerLeft.append('4', self.video)
 
         horizontalContainer.append('0', subContainerLeft)
         horizontalContainer.append('1', subContainerRight)
