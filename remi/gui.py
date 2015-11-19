@@ -16,7 +16,7 @@ import os
 import traceback
 from functools import cmp_to_key
 
-from .server import runtimeInstances, debug_message, debug_alert
+from .server import runtimeInstances, debug_message, debug_alert, update_event
 
 
 def to_pix(x):
@@ -61,17 +61,14 @@ class Tag(object):
         # we not callable
         runtimeInstances.append(self)
 
-        self.renderChildrenList = list()
+        self._render_children_list = []
+
         self.children = {}
         self.attributes = {}  # properties as class id style
 
-        self.type = 'tag'
+        self.type = ''
         self.attributes['id'] = str(id(self))
         self.attributes['class'] = self.__class__.__name__
-
-    def __setitem__(self, key, value):
-        """it is used for fast access to 'self.attributes[]'."""
-        self.attributes[key] = value
 
     @staticmethod
     def _replace_client_specific_values(html, client):
@@ -88,7 +85,7 @@ class Tag(object):
         # concatenating innerHTML. in case of html object we use repr, in case
         # of string we use directly the content
         innerHTML = ''
-        for s in self.renderChildrenList:
+        for s in self._render_children_list:
             if isinstance(s, type('')):
                 innerHTML = innerHTML + s
             elif isinstance(s, type(u'')):
@@ -111,8 +108,8 @@ class Tag(object):
             value.attributes['parent_widget'] = str(id(self))
 
         if key in self.children.keys():
-            self.renderChildrenList.remove(self.children[key])
-        self.renderChildrenList.append(value)
+            self._render_children_list.remove(self.children[key])
+        self._render_children_list.append(value)
 
         self.children[key] = value
 
@@ -123,7 +120,7 @@ class Tag(object):
     def remove(self, child):
         if child in self.children.values():
             #runtimeInstances.pop( runtimeInstances.index( self.children[key] ) )
-            self.renderChildrenList.remove(child)
+            self._render_children_list.remove(child)
             for k in self.children.keys():
                 if str(id(self.children[k])) == str(id(child)):
                     self.children.pop(k)
@@ -188,11 +185,13 @@ class Widget(Tag):
 
         self.eventManager = EventManager()
 
+    def redraw(self):
+        update_event.set()
+
     def repr(self, client, include_children = True):
         """it is used to automatically represent the widget to HTML format
         packs all the attributes, children and so on."""
-        self['style'] = jsonize(self.style)
-
+        self.attributes['style'] = jsonize(self.style)
         return super(Widget,self).repr(client, include_children)
 
     def append(self, key, value):
@@ -409,7 +408,7 @@ class GenericDialog(Widget):
     def add_field(self,key,field):
         fields_spacing = 5
         field_height = from_pix(field.style['height']) + fields_spacing*2
-        field_width = from_pix(field.style['width']) + fields_spacing*4
+        field_width = from_pix(field.style['width']) + fields_spacing*2
         self.style['height'] = to_pix(from_pix(self.style['height']) + field_height)
         self.container.style['height'] = to_pix(from_pix(self.container.style['height']) + field_height)
         self.inputs[key] = field
@@ -502,9 +501,9 @@ class ListView(Widget):
                 self.selected_key = k
                 debug_message('ListView - onselection. Selected item key: ',k)
                 if self.selected_item is not None:
-                    self.selected_item['selected'] = False
+                    self.selected_item.attributes['selected'] = False
                 self.selected_item = self.children[self.selected_key]
-                self.selected_item['selected'] = True
+                self.selected_item.attributes['selected'] = True
                 break
         return self.eventManager.propagate(self.EVENT_ONSELECTION, [self.selected_key])
 
@@ -1068,7 +1067,7 @@ class FileSelectionDialog(GenericDialog):
     def __init__(self, width = 600, fileFolderNavigatorHeight=210, title='File dialog',
                  message='Select files and folders', multiple_selection=True, selection_folder='.'):
         super(FileSelectionDialog, self).__init__(width, 160, title, message)
-        self.fileFolderNavigator = FileFolderNavigator(width-20, fileFolderNavigatorHeight,
+        self.fileFolderNavigator = FileFolderNavigator(width-30, fileFolderNavigatorHeight,
                                                        multiple_selection, selection_folder)
         self.add_field('fileFolderNavigator',self.fileFolderNavigator)
         self.EVENT_ONCONFIRMVALUE = 'confirm_value'
@@ -1086,6 +1085,12 @@ class FileSelectionDialog(GenericDialog):
         self.eventManager.register_listener(self.EVENT_ONCONFIRMVALUE, listener, funcname)
 
 
+class MenuBar(Widget):
+    def __init__(self, w, h, orientation=Widget.LAYOUT_HORIZONTAL):
+        super(MenuBar, self).__init__(w, h, orientation)
+        self.type = 'nav'
+
+
 class Menu(Widget):
 
     """Menu widget can contain MenuItem."""
@@ -1096,7 +1101,7 @@ class Menu(Widget):
 
 
 class MenuItem(Widget):
-    
+
     """MenuItem widget can contain other MenuItem."""
 
     def __init__(self, w, h, text):
