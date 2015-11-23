@@ -13,10 +13,12 @@
 """
 
 import os
-import traceback
+import logging
 from functools import cmp_to_key
 
-from .server import runtimeInstances, debug_message, debug_alert, update_event
+from .server import runtimeInstances, update_event
+
+log = logging.getLogger('remi.gui')
 
 
 def to_pix(x):
@@ -28,7 +30,7 @@ def from_pix(x):
     try:
         v = int(float(x.replace('px', '')))
     except Exception as e:
-        debug_alert(traceback.format_exc())
+        log.error('error parsing px', exc_info=True)
     return v
 
 
@@ -70,18 +72,13 @@ class Tag(object):
         self.attributes['id'] = str(id(self))
         self.attributes['class'] = self.__class__.__name__
 
-    @staticmethod
-    def _replace_client_specific_values(html, client):
-        return html
-
-    def repr(self, client, include_children = True):
+    def repr(self, client, include_children=True):
         """it is used to automatically represent the object to HTML format
         packs all the attributes, children and so on."""
-        classname = self.__class__.__name__
 
         self.attributes['children_list'] = ','.join(map(lambda k, v: str(
             id(v)), self.children.keys(), self.children.values())) 
-        
+
         # concatenating innerHTML. in case of html object we use repr, in case
         # of string we use directly the content
         innerHTML = ''
@@ -93,9 +90,11 @@ class Tag(object):
             elif include_children:
                 innerHTML = innerHTML + s.repr(client)
 
-        html = '<%s %s>%s</%s>' % (self.type, ' '.join(map(lambda k, v: k + "=\"" + str(
-            v) + "\"", self.attributes.keys(), self.attributes.values())), innerHTML, self.type)
-        return self._replace_client_specific_values(html, client)
+        html = '<%s %s>%s</%s>' % (self.type,
+                                   ' '.join(map(lambda k, v: k + '="' + str(v) + '"', self.attributes.keys(), self.attributes.values())),
+                                   innerHTML,
+                                   self.type)
+        return html
 
     def append(self, key, value):
         """it allows to add child to this.
@@ -107,7 +106,7 @@ class Tag(object):
         if hasattr(value, 'attributes'):
             value.attributes['parent_widget'] = str(id(self))
 
-        if key in self.children.keys():
+        if key in self.children:
             self._render_children_list.remove(self.children[key])
         self._render_children_list.append(value)
 
@@ -499,7 +498,7 @@ class ListView(Widget):
         for k in self.children:
             if self.children[k] == clicked_item:
                 self.selected_key = k
-                debug_message('ListView - onselection. Selected item key: ',k)
+                log.debug('ListView - onselection. Selected item key: %s' % k)
                 if self.selected_item is not None:
                     self.selected_item.attributes['selected'] = False
                 self.selected_item = self.children[self.selected_key]
@@ -633,7 +632,7 @@ class DropDown(Widget):
         return self.selected_key
 
     def onchange(self, newValue):
-        debug_message('combo box. selected', newValue)
+        log.debug('combo box. selected %s' % newValue)
         self.set_value(newValue)
         return self.eventManager.propagate(self.EVENT_ONCHANGE, [newValue])
 
@@ -928,7 +927,7 @@ class FileFolderNavigator(Widget):
                 except (IndexError, ValueError):
                     return (a > b)
 
-        debug_message("FileFolderNavigator - populate_folder_items")
+        log.debug("FileFolderNavigator - populate_folder_items")
 
         l = os.listdir(directory)
         l.sort(key=cmp_to_key(_sort_files))
@@ -961,7 +960,7 @@ class FileFolderNavigator(Widget):
             self.chdir(os.getcwd())
         except Exception as e:
             self.pathEditor.set_text(self.lastValidPath)
-            debug_alert(traceback.format_exc())
+            log.error('error changing directory', exc_info=True)
         os.chdir(curpath)  # restore the path
 
     def dir_go(self):
@@ -971,13 +970,13 @@ class FileFolderNavigator(Widget):
             os.chdir(self.pathEditor.get_text())
             self.chdir(os.getcwd())
         except Exception as e:
-            debug_alert(traceback.format_exc())
+            log.error('error going to directory', exc_info=True)
             self.pathEditor.set_text(self.lastValidPath)
         os.chdir(curpath)  # restore the path
 
     def chdir(self, directory):
         curpath = os.getcwd()  # backup the path
-        debug_message("FileFolderNavigator - chdir:" + directory + "\n")
+        log.debug("FileFolderNavigator - chdir: %s" % directory)
         for c in self.folderItems:
             self.itemContainer.remove(c)  # remove the file and folders from the view
         self.folderItems = []
@@ -994,7 +993,7 @@ class FileFolderNavigator(Widget):
             for c in self.folderItems:
                 c.set_selected(False)
             folderitem.set_selected(True)
-        debug_message("FileFolderNavigator - on_folder_item_click")
+        log.debug("FileFolderNavigator - on_folder_item_click")
         # when an item is clicked it is added to the file selection list
         f = os.path.join(self.pathEditor.get_text(), folderitem.get_text())
         if f in self.selectionlist:
@@ -1003,7 +1002,7 @@ class FileFolderNavigator(Widget):
             self.selectionlist.append(f)
 
     def on_folder_item_click(self,folderitem):
-        debug_message("FileFolderNavigator - on_folder_item_dblclick")
+        log.debug("FileFolderNavigator - on_folder_item_dblclick")
         # when an item is clicked two time
         f = os.path.join(self.pathEditor.get_text(), folderitem.get_text())
         if not os.path.isfile(f):
@@ -1148,36 +1147,13 @@ class FileUploader(Widget):
         self.EVENT_ON_SUCCESS = 'onsuccess'
         self.EVENT_ON_FAILED = 'onfailed'
 
-        fileUploadScript = """
-        function uploadFile(savePath,file){
-            var url = '/';
-            var xhr = new XMLHttpRequest();
-            var fd = new FormData();
-            xhr.open('POST', url, true);
-            xhr.setRequestHeader('savepath', savePath);
-            xhr.setRequestHeader('filename', file.name);
-            xhr.onreadystatechange = function() {
-                if (xhr.readyState == 4 && xhr.status == 200) {
-                    /* Every thing ok, file uploaded */
-                    var params={};params['filename']=file.name;
-                    sendCallbackParam('%(id)s','%(evt_success)s',params);
-                    console.log('upload success: ' + file.name);
-                }else if(xhr.status == 400){
-                    var params={};params['filename']=file.name;
-                    sendCallbackParam('%(id)s','%(evt_failed)s',params);
-                    console.log('upload failed: ' + file.name);
-                }
-            };
-            fd.append('upload_file', file);
-            xhr.send(fd);
-        };
-        var files = this.files;for(var i=0; i<files.length; i++){uploadFile('%(savepath)s',files[i]);}
-        """ % {'id':id(self),
-               'evt_success':self.EVENT_ON_SUCCESS, 'evt_failed':self.EVENT_ON_FAILED,
-               'savepath':self._savepath}
+        self.attributes[self.EVENT_ONCHANGE] = \
+            "var files = this.files;"\
+            "for(var i=0; i<files.length; i++){"\
+            "uploadFile('%(id)s','%(evt_success)s','%(evt_failed)s','%(savepath)s',files[i]);}" % {
+                'id':id(self), 'evt_success':self.EVENT_ON_SUCCESS, 'evt_failed':self.EVENT_ON_FAILED,
+                'savepath':self._savepath}
 
-        self.attributes[self.EVENT_ONCHANGE] = fileUploadScript
-        
     def onsuccess(self,filename):
         return self.eventManager.propagate(self.EVENT_ON_SUCCESS, [filename])
 
