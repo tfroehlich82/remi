@@ -349,6 +349,8 @@ class _UpdateThread(threading.Thread):
             with update_lock:
                 try:
                     for client in clients.values():
+                        if not hasattr(client, 'root'):
+                            continue
                         # here we check if the root window has changed
                         if not hasattr(client,'old_root_window') or client.old_root_window != client.root:
                             # a new window is shown, clean the old_runtime_widgets
@@ -649,6 +651,9 @@ function uploadFile(widgetID, eventSuccess, eventFail, savePath,file){
             widget,function = attr_call.group(1,2)
             try:
                 content,headers = get_method_by(get_method_by(self.client.root, widget), function)(*params)
+                if content is None:
+                    self.send_response(503)
+                    return
                 self.send_response(200)
             except IOError:
                 log.error('attr call error', exc_info=True)
