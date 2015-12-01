@@ -195,7 +195,7 @@ class Widget(Tag):
         self.EVENT_ONCHANGE = 'onchange'
         self.EVENT_ONFOCUS = 'onfocus'
         self.EVENT_ONBLUR = 'onblur'
-
+        self.EVENT_ONCONTEXTMENU = "oncontextmenu"
         self.EVENT_ONUPDATE = 'onupdate'
 
         if w > -1:
@@ -283,6 +283,13 @@ class Widget(Tag):
     def set_on_click_listener(self, listener, user_data = None):
         self.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONCLICK)
         self.eventManager.register_listener(self.EVENT_ONCLICK, listener, user_data)
+
+    def oncontextmenu(self):
+        return self.eventManager.propagate(self.EVENT_ONCONTEXTMENU, [])
+
+    def set_on_contextmenu_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONCONTEXTMENU] = "sendCallback('%s','%s');return false;" % (id(self), self.EVENT_ONCONTEXTMENU)
+        self.eventManager.register_listener(self.EVENT_ONCONTEXTMENU, listener, funcname)
 
 
 class Button(Widget):
@@ -759,7 +766,7 @@ class Table(Widget):
         self.type = 'table'
         self.style['float'] = 'none'
         
-    def from_2d_matrix(self, _matrix):
+    def from_2d_matrix(self, _matrix, fill_title=True):
         """
         Fills the table with the data contained in the provided 2d _matrix
         The first row of the matrix is set as table title
@@ -770,7 +777,7 @@ class Table(Widget):
         for row in _matrix:
             tr = TableRow()
             for item in row:
-                if first_row:
+                if first_row and fill_title:
                     ti = TableTitle(item)
                 else:
                     ti = TableItem(item)
