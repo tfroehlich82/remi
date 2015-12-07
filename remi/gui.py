@@ -38,37 +38,25 @@ def jsonize(d):
     return ';'.join(map(lambda k, v: k + ':' + v + '', d.keys(), d.values()))
 
 
-class Event(object):
-    source = None
-    user_data = None
-    def __init__(self, source=None, user_data=None):
-        self.source = source
-        self.user_data = user_data
-
-
 class EventManager(object):
     """Manages the event propagation to the listeners functions"""
 
-    def __init__(self,event_source):
-        self.event_source = event_source
+    def __init__(self):
         self.listeners = {}
-        self.event = {}
 
     def propagate(self, eventname, params):
         # if for an event there is a listener, it calls the listener passing the parameters
         if eventname not in self.listeners:
             return
         listener = self.listeners[eventname]
-        return listener(self.event[eventname],*params)
+        return getattr(listener['instance'], listener['funcname'])(*params)
 
-    def register_listener(self, eventname, listener, user_data=None):
+    def register_listener(self, eventname, instance, funcname):
         """register a listener for a specific event"""
-        self.listeners[eventname] = listener
-        self.event[eventname] = Event(self.event_source, user_data)
+        self.listeners[eventname] = {'instance':instance, 'funcname':funcname}
 
 
 class Tag(object):
-    """Tag class represents an object that can be represented in html format."""
     def __init__(self):
         # the runtime instances are processed every time a requests arrives, searching for the called method
         # if a class instance is not present in the runtimeInstances, it will
@@ -85,11 +73,8 @@ class Tag(object):
         self.attributes['class'] = self.__class__.__name__
 
     def repr(self, client, include_children=True):
-        """
-        It is used to automatically represent the object to HTML format.
-
-        Packs into a single string all the attributes, children and so on.
-        """
+        """it is used to automatically represent the object to HTML format
+        packs all the attributes, children and so on."""
 
         self.attributes['children_list'] = ','.join(map(lambda k, v: str(
             id(v)), self.children.keys(), self.children.values())) 
@@ -111,19 +96,13 @@ class Tag(object):
                                    self.type)
         return html
 
-    def append(self, value, key = None):
-        """
-        It allows to add children Tags to this.
+    def append(self, key, value):
+        """it allows to add child to this.
 
-        Keyword arguments:
-        value -- the Tag instance
-        key -- the key index used to store the Tag inside the self.children dictionary (default str(id(value)))
+        The key can be everything you want, in order to access to the
+        specific child in this way 'widget.children[key]'.
 
-        Returns:
-        The provided or generated key.
         """
-        key = str(id(value)) if not key else key
-        
         if hasattr(value, 'attributes'):
             value.attributes['parent_widget'] = str(id(self))
 
@@ -132,15 +111,12 @@ class Tag(object):
         self._render_children_list.append(value)
 
         self.children[key] = value
-        return key
 
     def empty(self):
-        """Removes all the children Tags."""
         for k in list(self.children.keys()):
             self.remove(self.children[k])
 
     def remove(self, child):
-        """Removes a single child from the self.children dictionary."""
         if child in self.children.values():
             #runtimeInstances.pop( runtimeInstances.index( self.children[key] ) )
             self._render_children_list.remove(child)
@@ -188,7 +164,14 @@ class Widget(Tag):
         self.EVENT_ONMOUSEMOVE = 'onmousemove'
         self.EVENT_ONMOUSEOVER = 'onmouseover'
         self.EVENT_ONMOUSEOUT = 'onmouseout'
+        self.EVENT_ONMOUSELEAVE = 'onmouseleave'
         self.EVENT_ONMOUSEUP = 'onmouseup'
+        self.EVENT_ONTOUCHMOVE = 'ontouchmove'
+        self.EVENT_ONTOUCHSTART = 'ontouchstart'
+        self.EVENT_ONTOUCHEND = 'ontouchend'
+        self.EVENT_ONTOUCHENTER = 'ontouchenter'
+        self.EVENT_ONTOUCHLEAVE = 'ontouchleave'
+        self.EVENT_ONTOUCHCANCEL = 'ontouchcancel'
         self.EVENT_ONKEYDOWN = 'onkeydown'
         self.EVENT_ONKEYPRESS = 'onkeypress'
         self.EVENT_ONKEYUP = 'onkeyup'
@@ -206,7 +189,7 @@ class Widget(Tag):
 
         self.oldRootWidget = None  # used when hiding the widget
 
-        self.eventManager = EventManager(self)
+        self.eventManager = EventManager()
 
     def redraw(self):
         update_event.set()
@@ -217,19 +200,14 @@ class Widget(Tag):
         self.attributes['style'] = jsonize(self.style)
         return super(Widget,self).repr(client, include_children)
 
-    def append(self, value, key = None):
-        """
-        It allows to add children Tags to this.
+    def append(self, key, value):
+        """it allows to add child widgets to this.
 
-        Keyword arguments:
-        value -- the Tag instance
-        key -- the key index used to store the Tag inside the self.children dictionary (default str(id(value)))
+        The key can be everything you want, in order to access to the
+        specific child in this way 'widget.children[key]'.
 
-        Returns:
-        The provided or generated key.
         """
-        key = str(id(value)) if not key else key
-        super(Widget,self).append(value, key)
+        super(Widget,self).append(key, value)
 
         if hasattr(self.children[key], 'style'):
             spacing = to_pix(self.widget_spacing)
@@ -248,21 +226,20 @@ class Widget(Tag):
                         self.children[key].style['float'] = 'left'
                 else:
                     self.children[key].style['float'] = 'left'
-        return key
 
     def onfocus(self):
         return self.eventManager.propagate(self.EVENT_ONFOCUS, [])
 
-    def set_on_focus_listener(self, listener, user_data = None):
-        self.attributes[self.EVENT_ONFOCUS] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONFOCUS)
-        self.eventManager.register_listener(self.EVENT_ONFOCUS, listener, user_data)
+    def set_on_focus_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONFOCUS] = "sendCallback('%s','%s');event.stopPropagation();event.preventDefault();" % (id(self), self.EVENT_ONFOCUS)
+        self.eventManager.register_listener(self.EVENT_ONFOCUS, listener, funcname)
 
     def onblur(self):
         return self.eventManager.propagate(self.EVENT_ONBLUR, [])
 
-    def set_on_blur_listener(self, listener, user_data = None):
-        self.attributes[self.EVENT_ONBLUR] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONBLUR)
-        self.eventManager.register_listener(self.EVENT_ONBLUR, listener, user_data)
+    def set_on_blur_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONBLUR] = "sendCallback('%s','%s');event.stopPropagation();event.preventDefault();" % (id(self), self.EVENT_ONBLUR)
+        self.eventManager.register_listener(self.EVENT_ONBLUR, listener, funcname)
 
     def show(self, baseAppInstance):
         """Allows to show the widget as root window"""
@@ -280,16 +257,93 @@ class Widget(Tag):
     def onclick(self):
         return self.eventManager.propagate(self.EVENT_ONCLICK, [])
 
-    def set_on_click_listener(self, listener, user_data = None):
-        self.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONCLICK)
-        self.eventManager.register_listener(self.EVENT_ONCLICK, listener, user_data)
+    def set_on_click_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');event.stopPropagation();event.preventDefault();" % (id(self), self.EVENT_ONCLICK)
+        self.eventManager.register_listener(self.EVENT_ONCLICK, listener, funcname)
 
     def oncontextmenu(self):
         return self.eventManager.propagate(self.EVENT_ONCONTEXTMENU, [])
 
     def set_on_contextmenu_listener(self, listener, funcname):
-        self.attributes[self.EVENT_ONCONTEXTMENU] = "sendCallback('%s','%s');return false;" % (id(self), self.EVENT_ONCONTEXTMENU)
+        self.attributes[self.EVENT_ONCONTEXTMENU] = "sendCallback('%s','%s');event.stopPropagation();event.preventDefault();return false;" % (id(self), self.EVENT_ONCONTEXTMENU)
         self.eventManager.register_listener(self.EVENT_ONCONTEXTMENU, listener, funcname)
+
+    def onmousedown(self, x, y):
+        return self.eventManager.propagate(self.EVENT_ONMOUSEDOWN, [x, y])
+
+    def set_on_mousedown_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONMOUSEDOWN] = "var params={};params['x']=event.clientX-this.offsetLeft;params['y']=event.clientY-this.offsetTop; sendCallbackParam('%s','%s',params);event.stopPropagation();event.preventDefault();return false;" % (id(self), self.EVENT_ONMOUSEDOWN)
+        self.eventManager.register_listener(self.EVENT_ONMOUSEDOWN, listener, funcname)
+        
+    def onmouseup(self, x, y):
+        return self.eventManager.propagate(self.EVENT_ONMOUSEUP, [x, y])
+
+    def set_on_mouseup_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONMOUSEUP] = "var params={};params['x']=event.clientX-this.offsetLeft;params['y']=event.clientY-this.offsetTop; sendCallbackParam('%s','%s',params);event.stopPropagation();event.preventDefault();return false;" % (id(self), self.EVENT_ONMOUSEUP)
+        self.eventManager.register_listener(self.EVENT_ONMOUSEUP, listener, funcname)
+        
+    def onmouseout(self):
+        return self.eventManager.propagate(self.EVENT_ONMOUSEOUT, [])
+
+    def set_on_mouseout_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONMOUSEOUT] = "sendCallback('%s','%s');event.stopPropagation();event.preventDefault();return false;" % (id(self), self.EVENT_ONMOUSEOUT)
+        self.eventManager.register_listener(self.EVENT_ONMOUSEOUT, listener, funcname)
+
+    def onmouseleave(self):
+        return self.eventManager.propagate(self.EVENT_ONMOUSELEAVE, [])
+
+    def set_on_mouseleave_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONMOUSELEAVE] = "sendCallback('%s','%s');event.stopPropagation();event.preventDefault();return false;" % (id(self), self.EVENT_ONMOUSELEAVE)
+        self.eventManager.register_listener(self.EVENT_ONMOUSELEAVE, listener, funcname)
+
+    def onmousemove(self, x, y):
+        return self.eventManager.propagate(self.EVENT_ONMOUSEMOVE, [x, y])
+
+    def set_on_mousemove_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONMOUSEMOVE] = "var params={};params['x']=event.clientX-this.offsetLeft;params['y']=event.clientY-this.offsetTop; sendCallbackParam('%s','%s',params);event.stopPropagation();event.preventDefault();return false;" % (id(self), self.EVENT_ONMOUSEMOVE)
+        self.eventManager.register_listener(self.EVENT_ONMOUSEMOVE, listener, funcname)
+
+    def ontouchmove(self, x, y):
+        return self.eventManager.propagate(self.EVENT_ONTOUCHMOVE, [x, y])
+
+    def set_on_touchmove_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONTOUCHMOVE] = "var params={};params['x']=parseInt(event.changedTouches[0].clientX)-this.offsetLeft;params['y']=parseInt(event.changedTouches[0].clientY)-this.offsetTop; sendCallbackParam('%s','%s',params);event.stopPropagation();event.preventDefault();return false;" % (id(self), self.EVENT_ONTOUCHMOVE)
+        self.eventManager.register_listener(self.EVENT_ONTOUCHMOVE, listener, funcname)
+
+    def ontouchstart(self, x, y):
+        return self.eventManager.propagate(self.EVENT_ONTOUCHSTART, [x, y])
+
+    def set_on_touchstart_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONTOUCHSTART] = "var params={};params['x']=parseInt(event.changedTouches[0].clientX)-this.offsetLeft;params['y']=parseInt(event.changedTouches[0].clientY)-this.offsetTop; sendCallbackParam('%s','%s',params);event.stopPropagation();event.preventDefault();return false;" % (id(self), self.EVENT_ONTOUCHSTART)
+        self.eventManager.register_listener(self.EVENT_ONTOUCHSTART, listener, funcname)
+
+    def ontouchend(self, x, y):
+        return self.eventManager.propagate(self.EVENT_ONTOUCHEND, [x, y])
+
+    def set_on_touchend_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONTOUCHEND] = "var params={};params['x']=parseInt(event.changedTouches[0].clientX)-this.offsetLeft;params['y']=parseInt(event.changedTouches[0].clientY)-this.offsetTop; sendCallbackParam('%s','%s',params);event.stopPropagation();event.preventDefault();return false;" % (id(self), self.EVENT_ONTOUCHEND)
+        self.eventManager.register_listener(self.EVENT_ONTOUCHEND, listener, funcname)
+
+    def ontouchenter(self, x, y):
+        return self.eventManager.propagate(self.EVENT_ONTOUCHENTER, [x, y])
+
+    def set_on_touchenter_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONTOUCHENTER] = "var params={};params['x']=parseInt(event.changedTouches[0].clientX)-this.offsetLeft;params['y']=parseInt(event.changedTouches[0].clientY)-this.offsetTop; sendCallbackParam('%s','%s',params);event.stopPropagation();event.preventDefault();return false;" % (id(self), self.EVENT_ONTOUCHENTER)
+        self.eventManager.register_listener(self.EVENT_ONTOUCHENTER, listener, funcname)
+
+    def ontouchleave(self):
+        return self.eventManager.propagate(self.EVENT_ONTOUCHLEAVE, [])
+
+    def set_on_touchleave_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONTOUCHLEAVE] = "sendCallback('%s','%s');event.stopPropagation();event.preventDefault();return false;" % (id(self), self.EVENT_ONTOUCHLEAVE)
+        self.eventManager.register_listener(self.EVENT_ONTOUCHLEAVE, listener, funcname)
+
+    def ontouchcancel(self):
+        return self.eventManager.propagate(self.EVENT_ONTOUCHCANCEL, [])
+
+    def set_on_touchcancel_listener(self, listener, funcname):
+        self.attributes[self.EVENT_ONTOUCHCANCEL] = "sendCallback('%s','%s');event.stopPropagation();event.preventDefault();return false;" % (id(self), self.EVENT_ONTOUCHCANCEL)
+        self.eventManager.register_listener(self.EVENT_ONTOUCHCANCEL, listener, funcname)
 
 
 class Button(Widget):
@@ -301,7 +355,7 @@ class Button(Widget):
         self.set_text(text)
 
     def set_text(self, t):
-        self.append(t, 'text')
+        self.append('text', t)
 
 
 class TextInput(Widget):
@@ -325,7 +379,7 @@ class TextInput(Widget):
 
     def set_text(self, t):
         """sets the text content."""
-        self.append(t, 'text')
+        self.append('text', t)
 
     def get_text(self):
         return self.children['text']
@@ -342,27 +396,27 @@ class TextInput(Widget):
         self.set_text(newValue)
         return self.eventManager.propagate(self.EVENT_ONCHANGE, [newValue])
 
-    def set_on_change_listener(self, listener, user_data = None):
+    def set_on_change_listener(self, listener, funcname):
         """register the listener for the onchange event."""
-        self.eventManager.register_listener(self.EVENT_ONCHANGE, listener, user_data)
+        self.eventManager.register_listener(self.EVENT_ONCHANGE, listener, funcname)
 
     def onkeydown(self,newValue):
         """returns the new text value."""
         self.set_text(newValue)
         return self.eventManager.propagate(self.EVENT_ONKEYDOWN, [newValue])
         
-    def set_on_key_down_listener(self, listener, user_data = None):
+    def set_on_key_down_listener(self,listener,funcname):
         self.attributes[self.EVENT_ONKEYDOWN] = \
             "var params={};params['newValue']=document.getElementById('%(id)s').value;"\
             "sendCallbackParam('%(id)s','%(evt)s',params);" % {'id':id(self), 'evt':self.EVENT_ONKEYDOWN}
-        self.eventManager.register_listener(self.EVENT_ONKEYDOWN, listener, user_data)
+        self.eventManager.register_listener(self.EVENT_ONKEYDOWN, listener, funcname)
 
     def onenter(self,newValue):
         """returns the new text value."""
         self.set_text(newValue)
         return self.eventManager.propagate(self.EVENT_ONENTER, [newValue])
 
-    def set_on_enter_listener(self, listener, user_data = None):
+    def set_on_enter_listener(self,listener,funcname):
         self.attributes[self.EVENT_ONKEYDOWN] = """
             if (event.keyCode == 13) {
                 var params={};
@@ -370,7 +424,7 @@ class TextInput(Widget):
                 sendCallbackParam('%(id)s','%(evt)s',params);
                 return false;
             }""" % {'id':id(self), 'evt':self.EVENT_ONENTER}
-        self.eventManager.register_listener(self.EVENT_ONENTER, listener, user_data)
+        self.eventManager.register_listener(self.EVENT_ONENTER, listener, funcname)
 
 
 class Label(Widget):
@@ -378,10 +432,10 @@ class Label(Widget):
     def __init__(self, w, h, text):
         super(Label, self).__init__(w, h)
         self.type = 'p'
-        self.append(text, 'text')
+        self.append('text', text)
 
     def set_text(self, t):
-        self.append(t, 'text')
+        self.append('text', t)
 
     def get_text(self):
         return self.children['text']
@@ -404,13 +458,13 @@ class GenericDialog(Widget):
             t = Label(self.width - 20, 50, title)
             t.style['font-size'] = '16px'
             t.style['font-weight'] = 'bold'
-            self.append(t)
+            self.append('1', t)
             self.height = self.height + 50
             self.style['height'] = to_pix(from_pix(self.style['height']) + 50)
             
         if len(message) > 0:
             m = Label(self.width - 20, 30, message)
-            self.append(m)
+            self.append('2', m)
             self.height = self.height + 30
             self.style['height'] = to_pix(from_pix(self.style['height']) + 30)
         
@@ -419,13 +473,13 @@ class GenericDialog(Widget):
         self.cancel = Button(50, 30, 'Cancel')
 
         hlay = Widget(self.width - 20, 30)
-        hlay.append(self.conf)
-        hlay.append(self.cancel)
+        hlay.append('1', self.conf)
+        hlay.append('2', self.cancel)
         self.conf.style['float'] = 'right'
         self.cancel.style['float'] = 'right'
 
-        self.append(self.container)
-        self.append(hlay)
+        self.append('3', self.container)
+        self.append('4', hlay)
 
         self.conf.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONCONFIRM)
         self.cancel.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONCANCEL)
@@ -434,19 +488,7 @@ class GenericDialog(Widget):
 
         self.baseAppInstance = None
 
-    def add_field_with_label(self, labelDescription, field, key=None):
-        """
-        It allows to add input fields to the dialog with a description Label.
-
-        Keyword arguments:
-        labelDescription -- textual content of the description label
-        field -- the Widget instance
-        key -- the key index used to store the Widget inside the self.inputs dictionary (default str(id(value)))
-
-        Returns:
-        The provided or generated key.
-        """
-        key = str(id(field)) if not key else key
+    def add_field_with_label(self,key,labelDescription,field):
         fields_spacing = 5
         field_height = from_pix(field.style['height']) + fields_spacing*2
         field_width = from_pix(field.style['width']) + fields_spacing*4
@@ -455,23 +497,11 @@ class GenericDialog(Widget):
         self.inputs[key] = field
         label = Label(self.width-20-field_width-1, 30, labelDescription )
         container = Widget(self.width-20, field_height, Widget.LAYOUT_HORIZONTAL, fields_spacing)
-        container.append(label, 'lbl' + key)
-        container.append(self.inputs[key], key)
-        self.container.append(container, key)
-        return key
+        container.append('lbl' + key,label)
+        container.append(key, self.inputs[key])
+        self.container.append(key, container)
         
-    def add_field(self, field, key=None):
-        """
-        It allows to add input fields to the dialog.
-
-        Keyword arguments:
-        field -- the Widget instance
-        key -- the key index used to store the Widget inside the self.inputs dictionary (default str(id(value)))
-
-        Returns:
-        The provided or generated key.
-        """
-        key = str(id(field)) if not key else key
+    def add_field(self,key,field):
         fields_spacing = 5
         field_height = from_pix(field.style['height']) + fields_spacing*2
         field_width = from_pix(field.style['width']) + fields_spacing*2
@@ -479,9 +509,8 @@ class GenericDialog(Widget):
         self.container.style['height'] = to_pix(from_pix(self.container.style['height']) + field_height)
         self.inputs[key] = field
         container = Widget(self.width-20, field_height, Widget.LAYOUT_HORIZONTAL, fields_spacing)
-        container.append(self.inputs[key], key)
-        self.container.append(container, key)
-        return key
+        container.append(key, self.inputs[key])
+        self.container.append(key, container)
 
     def get_field(self, key):
         return self.inputs[key]
@@ -492,15 +521,15 @@ class GenericDialog(Widget):
         self.hide()
         return self.eventManager.propagate(self.EVENT_ONCONFIRM, [])
 
-    def set_on_confirm_dialog_listener(self, listener, user_data = None):
-        self.eventManager.register_listener(self.EVENT_ONCONFIRM, listener, user_data)
+    def set_on_confirm_dialog_listener(self, listener, funcname):
+        self.eventManager.register_listener(self.EVENT_ONCONFIRM, listener, funcname)
 
     def cancel_dialog(self):
         self.hide()
         return self.eventManager.propagate(self.EVENT_ONCANCEL, [])
 
-    def set_on_cancel_dialog_listener(self, listener, user_data = None):
-        self.eventManager.register_listener(self.EVENT_ONCANCEL, listener, user_data)
+    def set_on_cancel_dialog_listener(self, listener, funcname):
+        self.eventManager.register_listener(self.EVENT_ONCANCEL, listener, funcname)
 
 
 class InputDialog(GenericDialog):
@@ -513,29 +542,29 @@ class InputDialog(GenericDialog):
         super(InputDialog, self).__init__(width, height, title, message)
 
         self.inputText = TextInput(width - 20, 30)
-        self.inputText.set_on_enter_listener(self.on_text_enter_listener)
-        self.add_field(self.inputText, 'textinput')
+        self.inputText.set_on_enter_listener(self,'on_text_enter_listener')
+        self.add_field('textinput',self.inputText)
         self.inputText.set_text(initial_value)
 
         self.EVENT_ONCONFIRMVALUE = 'confirm_value'
-        self.set_on_confirm_dialog_listener(self.confirm_value)
+        self.set_on_confirm_dialog_listener(self, 'confirm_value')
 
-    def on_text_enter_listener(self, evt, value):
+    def on_text_enter_listener(self,value):
         """event called pressing on ENTER key.
         propagates the string content of the input field
         """
         self.hide()
         return self.eventManager.propagate(self.EVENT_ONCONFIRMVALUE, [value])
 
-    def confirm_value(self, evt):
+    def confirm_value(self):
         """event called pressing on OK button.
         propagates the string content of the input field
         """
         self.hide()
         return self.eventManager.propagate(self.EVENT_ONCONFIRMVALUE, [self.inputText.get_text()])
 
-    def set_on_confirm_value_listener(self, listener, user_data = None):
-        self.eventManager.register_listener(self.EVENT_ONCONFIRMVALUE, listener, user_data)
+    def set_on_confirm_value_listener(self, listener, funcname):
+        self.eventManager.register_listener(self.EVENT_ONCONFIRMVALUE, listener, funcname)
 
 
 class ListView(Widget):
@@ -549,31 +578,19 @@ class ListView(Widget):
         self.selected_item = None
         self.selected_key = None
 
-    def append(self, item, key = None):
-        """
-        It allows to add children ListItems.
-
-        Keyword arguments:
-        item -- the ListItem instance
-        key -- the key index used to store the ListItem inside the self.children dictionary (default str(id(value)))
-
-        Returns:
-        The provided or generated key.
-        """
-        key = str(id(item)) if not key else key
+    def append(self, key, item):
         # if an event listener is already set for the added item, it will not generate a selection event
         if item.attributes[self.EVENT_ONCLICK] == '':
-            item.set_on_click_listener(self.onselection)
+            item.set_on_click_listener(self, self.EVENT_ONSELECTION)
         item.attributes['selected'] = False
-        super(ListView, self).append(item, key)
-        return key
+        super(ListView, self).append(key, item)
     
     def empty(self):
         self.selected_item = None
         self.selected_key = None
         super(ListView,self).empty()
 
-    def onselection(self, evt, clicked_item):
+    def onselection(self, clicked_item):
         self.selected_key = None
         for k in self.children:
             if self.children[k] == clicked_item:
@@ -586,22 +603,22 @@ class ListView(Widget):
                 break
         return self.eventManager.propagate(self.EVENT_ONSELECTION, [self.selected_key])
 
-    def set_on_selection_listener(self, listener, user_data = None):
-        """
-        The listener will receive the key of the selected item.
-
+    def set_on_selection_listener(self, listener, funcname):
+        """The listener will receive the key of the selected item.
         If you add the element from an array, use a numeric incremental key
         """
-        self.eventManager.register_listener(self.EVENT_ONSELECTION, listener, user_data)
+        self.eventManager.register_listener(self.EVENT_ONSELECTION, listener, funcname)
 
     def get_value(self):
-        """Returns the value of the selected item or None"""
+        """Returns the value of the selected item or None
+        """
         if self.selected_item is None:
             return None
         return self.selected_item.get_value()
 
     def get_key(self):
-        """Returns the key of the selected item or None"""
+        """Returns the key of the selected item or None
+        """
         return self.selected_key
 
     def select_by_key(self, itemKey):
@@ -645,7 +662,7 @@ class ListItem(Widget):
         self.set_text(text)
 
     def set_text(self, text):
-        self.append(text,'text')
+        self.append('text', text)
 
     def get_text(self):
         return self.children['text']
@@ -716,8 +733,8 @@ class DropDown(Widget):
         self.set_value(newValue)
         return self.eventManager.propagate(self.EVENT_ONCHANGE, [newValue])
 
-    def set_on_change_listener(self, listener, user_data = None):
-        self.eventManager.register_listener(self.EVENT_ONCHANGE, listener, user_data)
+    def set_on_change_listener(self, listener, funcname):
+        self.eventManager.register_listener(self.EVENT_ONCHANGE, listener, funcname)
 
 
 class DropDownItem(Widget):
@@ -732,7 +749,7 @@ class DropDownItem(Widget):
 
     def set_text(self, text):
         self.attributes['value'] = text
-        self.append(text,'text')
+        self.append('text', text)
 
     def get_text(self):
         return self.attributes['value']
@@ -781,8 +798,8 @@ class Table(Widget):
                     ti = TableTitle(item)
                 else:
                     ti = TableItem(item)
-                tr.append( ti )
-            self.append( tr )
+                tr.append( str(id(ti)), ti )
+            self.append( str(id(tr)), tr )
             first_row = False
 
 
@@ -805,7 +822,7 @@ class TableItem(Widget):
     def __init__(self, text=''):
         super(TableItem, self).__init__(-1, -1)
         self.type = 'td'
-        self.append(text, 'text')
+        self.append('text', text)
         self.style['float'] = 'none'
 
 
@@ -816,7 +833,7 @@ class TableTitle(Widget):
     def __init__(self, title=''):
         super(TableTitle, self).__init__(-1, -1)
         self.type = 'th'
-        self.append(title, 'text')
+        self.append('text', title)
         self.style['float'] = 'none'
 
 
@@ -846,9 +863,9 @@ class Input(Widget):
         self.attributes['value'] = newValue
         return self.eventManager.propagate(self.EVENT_ONCHANGE, [newValue])
 
-    def set_on_change_listener(self, listener, user_data = None):
+    def set_on_change_listener(self, listener, funcname):
         """register the listener for the onchange event."""
-        self.eventManager.register_listener(self.EVENT_ONCHANGE, listener, user_data)
+        self.eventManager.register_listener(self.EVENT_ONCHANGE, listener, funcname)
 
 
 class CheckBoxLabel(Widget):
@@ -858,8 +875,8 @@ class CheckBoxLabel(Widget):
         inner_label_padding_left = 10
         self._checkbox = CheckBox(inner_checkbox_width, h, checked, user_data)
         self._label = Label(w-inner_checkbox_width-inner_label_padding_left, h, label)
-        self.append(self._checkbox, 'checkbox')
-        self.append(self._label, 'label')
+        self.append('checkbox', self._checkbox)
+        self.append('label', self._label)
         self._label.style['padding-left'] = to_pix(inner_label_padding_left)
 
         self.set_value = self._checkbox.set_value
@@ -924,11 +941,11 @@ class Slider(Input):
     def oninput(self, newValue):
         return self.eventManager.propagate(self.EVENT_ONINPUT, [newValue])
 
-    def set_oninput_listener(self, listener, user_data = None):
+    def set_oninput_listener(self, listener, funcname):
         self.attributes[self.EVENT_ONINPUT] = \
             "var params={};params['newValue']=document.getElementById('%(id)s').value;"\
             "sendCallbackParam('%(id)s','%(evt)s',params);" % {'id':id(self), 'evt':self.EVENT_ONINPUT}
-        self.eventManager.register_listener(self.EVENT_ONINPUT, listener, user_data)
+        self.eventManager.register_listener(self.EVENT_ONINPUT, listener, funcname)
 
 
 class ColorPicker(Input):
@@ -969,22 +986,22 @@ class FileFolderNavigator(Widget):
         self.selectionlist = []
         self.controlsContainer = Widget(w, 25, Widget.LAYOUT_HORIZONTAL)
         self.controlBack = Button(45, 25, 'Up')
-        self.controlBack.set_on_click_listener(self.dir_go_back)
+        self.controlBack.set_on_click_listener(self, 'dir_go_back')
         self.controlGo = Button(45, 25, 'Go >>')
-        self.controlGo.set_on_click_listener(self.dir_go)
+        self.controlGo.set_on_click_listener(self, 'dir_go')
         self.pathEditor = TextInput(w-90, 25)
         self.pathEditor.style['resize'] = 'none'
         self.pathEditor.attributes['rows'] = '1'
-        self.controlsContainer.append(self.controlBack)
-        self.controlsContainer.append(self.pathEditor)
-        self.controlsContainer.append(self.controlGo)
+        self.controlsContainer.append('1', self.controlBack)
+        self.controlsContainer.append('2', self.pathEditor)
+        self.controlsContainer.append('3', self.controlGo)
 
         self.itemContainer = Widget(w, h-25, Widget.LAYOUT_VERTICAL)
         self.itemContainer.style['overflow-y'] = 'scroll'
         self.itemContainer.style['overflow-x'] = 'hidden'
 
-        self.append(self.controlsContainer)
-        self.append(self.itemContainer, 'items')
+        self.append('controls', self.controlsContainer)
+        self.append('items', self.itemContainer)
 
         self.folderItems = list()
 
@@ -1027,13 +1044,13 @@ class FileFolderNavigator(Widget):
             full_path = os.path.join(directory, i)
             is_folder = not os.path.isfile(full_path)
             fi = FileFolderItem(self.w, 33, i, is_folder)
-            fi.set_on_click_listener(self.on_folder_item_click)  # navigation purpose
-            fi.set_on_selection_listener(self.on_folder_item_selected)  # selection purpose
+            fi.set_on_click_listener(self, 'on_folder_item_click')  # navigation purpose
+            fi.set_on_selection_listener(self, 'on_folder_item_selected')  # selection purpose
             self.folderItems.append(fi)
-            self.itemContainer.append(fi, i)
-        self.append(self.itemContainer, 'items')
+            self.itemContainer.append(i, fi)
+        self.append('items', self.itemContainer)
 
-    def dir_go_back(self, evt):
+    def dir_go_back(self):
         curpath = os.getcwd()  # backup the path
         try:
             os.chdir( self.pathEditor.get_text() )
@@ -1044,7 +1061,7 @@ class FileFolderNavigator(Widget):
             log.error('error changing directory', exc_info=True)
         os.chdir(curpath)  # restore the path
 
-    def dir_go(self, evt):
+    def dir_go(self):
         # when the GO button is pressed, it is supposed that the pathEditor is changed
         curpath = os.getcwd()  # backup the path
         try:
@@ -1068,7 +1085,7 @@ class FileFolderNavigator(Widget):
         self.pathEditor.set_text(directory)
         os.chdir(curpath)  # restore the path
 
-    def on_folder_item_selected(self, evt, folderitem):
+    def on_folder_item_selected(self,folderitem):
         if not self.multiple_selection:
             self.selectionlist = []
             for c in self.folderItems:
@@ -1082,7 +1099,7 @@ class FileFolderNavigator(Widget):
         else:
             self.selectionlist.append(f)
 
-    def on_folder_item_click(self, evt, folderitem):
+    def on_folder_item_click(self,folderitem):
         log.debug("FileFolderNavigator - on_folder_item_dblclick")
         # when an item is clicked two time
         f = os.path.join(self.pathEditor.get_text(), folderitem.get_text())
@@ -1104,32 +1121,32 @@ class FileFolderItem(Widget):
         self.icon = Widget(33, h)
         # the icon click activates the onselection event, that is propagates to registered listener
         if isFolder:
-            self.icon.set_on_click_listener(self.onclick)
+            self.icon.set_on_click_listener(self, self.EVENT_ONCLICK)
         self.icon.attributes['class'] = 'FileFolderItemIcon'
         icon_file = 'res/folder.png' if isFolder else 'res/file.png'
         self.icon.style['background-image'] = "url('%s')" % icon_file
         self.label = Label(w-33, h, text)
-        self.label.set_on_click_listener(self.onselection)
-        self.append(self.icon, 'icon')
-        self.append(self.label, 'text')
+        self.label.set_on_click_listener(self, self.EVENT_ONSELECTION)
+        self.append('icon', self.icon)
+        self.append('text', self.label)
         self.selected = False
 
-    def onclick(self, evt):
+    def onclick(self):
         return self.eventManager.propagate(self.EVENT_ONCLICK, [self])
 
-    def set_on_click_listener(self, listener, user_data = None):
-        self.eventManager.register_listener(self.EVENT_ONCLICK, listener, user_data)
+    def set_on_click_listener(self, listener, funcname):
+        self.eventManager.register_listener(self.EVENT_ONCLICK, listener, funcname)
 
     def set_selected(self, selected):
         self.selected = selected
         self.style['color'] = 'red' if self.selected else 'black'
 
-    def onselection(self, evt):
+    def onselection(self):
         self.set_selected(not self.selected)
         return self.eventManager.propagate(self.EVENT_ONSELECTION, [self])
 
-    def set_on_selection_listener(self, listener, user_data = None):
-        self.eventManager.register_listener(self.EVENT_ONSELECTION, listener, user_data)
+    def set_on_selection_listener(self, listener, funcname):
+        self.eventManager.register_listener(self.EVENT_ONSELECTION, listener, funcname)
 
     def set_text(self, t):
         """sets the text content."""
@@ -1149,11 +1166,11 @@ class FileSelectionDialog(GenericDialog):
         super(FileSelectionDialog, self).__init__(width, 80, title, message)
         self.fileFolderNavigator = FileFolderNavigator(width-30, fileFolderNavigatorHeight,
                                                        multiple_selection, selection_folder)
-        self.add_field(self.fileFolderNavigator, 'fileFolderNavigator')
+        self.add_field('fileFolderNavigator',self.fileFolderNavigator)
         self.EVENT_ONCONFIRMVALUE = 'confirm_value'
-        self.set_on_confirm_dialog_listener(self.confirm_value)
+        self.set_on_confirm_dialog_listener(self, 'confirm_value')
 
-    def confirm_value(self, evt):
+    def confirm_value(self):
         """event called pressing on OK button.
            propagates the string content of the input field
         """
@@ -1161,8 +1178,8 @@ class FileSelectionDialog(GenericDialog):
         params = [self.fileFolderNavigator.get_selection_list()]
         return self.eventManager.propagate(self.EVENT_ONCONFIRMVALUE, params)
 
-    def set_on_confirm_value_listener(self, listener, user_data = None):
-        self.eventManager.register_listener(self.EVENT_ONCONFIRMVALUE, listener, user_data)
+    def set_on_confirm_value_listener(self, listener, funcname):
+        self.eventManager.register_listener(self.EVENT_ONCONFIRMVALUE, listener, funcname)
 
 
 class MenuBar(Widget):
@@ -1194,27 +1211,14 @@ class MenuItem(Widget):
         self.set_text(text)
         self.append = self.addSubMenu
 
-    def addSubMenu(self, value, key = None):
-        """
-        It allows to add children MenuItem to this.
-
-        Keyword arguments:
-        value -- the MenuItem instance
-        key -- the key index used to store the MenuItem inside the self.subcontainer.children
-                dictionary (default str(id(value)))
-
-        Returns:
-        The provided or generated key.
-        """
-        key = str(id(value)) if not key else key
+    def addSubMenu(self, key, value):
         if self.subcontainer is None:
             self.subcontainer = Menu(self.w, self.h, Widget.LAYOUT_VERTICAL)
-            super(MenuItem, self).append(self.subcontainer, 'subcontainer')
-        self.subcontainer.append(value, key)
-        return key
+            super(MenuItem, self).append('subcontainer', self.subcontainer)
+        self.subcontainer.append(key, value)
 
     def set_text(self, text):
-        self.append(text, 'text')
+        self.append('text', text)
 
     def get_text(self):
         return self.children['text']
@@ -1251,15 +1255,15 @@ class FileUploader(Widget):
     def onsuccess(self,filename):
         return self.eventManager.propagate(self.EVENT_ON_SUCCESS, [filename])
 
-    def set_on_success_listener(self, listener, user_data = None):
+    def set_on_success_listener(self, listener, funcname):
         self.eventManager.register_listener(
-            self.EVENT_ON_SUCCESS, listener, user_data)
+            self.EVENT_ON_SUCCESS, listener, funcname)
 
     def onfailed(self,filename):
         return self.eventManager.propagate(self.EVENT_ON_FAILED, [filename])
 
-    def set_on_failed_listener(self, listener, user_data = None):
-        self.eventManager.register_listener(self.EVENT_ON_FAILED, listener, user_data)
+    def set_on_failed_listener(self, listener, funcname):
+        self.eventManager.register_listener(self.EVENT_ON_FAILED, listener, funcname)
         
 
 class FileDownloader(Widget):
@@ -1276,7 +1280,7 @@ class FileDownloader(Widget):
         self._path_separator = path_separator
 
     def set_text(self, t):
-        self.append(t, 'text')
+        self.append('text', t)
 
     def download(self):
         with open(self._filename, 'r+b') as f:
@@ -1297,7 +1301,7 @@ class Link(Widget):
         self.set_text(text)
 
     def set_text(self, t):
-        self.append(t, 'text')
+        self.append('text', t)
 
     def get_text(self):
         return self.children['text']
@@ -1315,3 +1319,117 @@ class VideoPlayer(Widget):
         self.attributes['preload'] = 'auto'
         self.attributes['controls'] = None
         self.attributes['poster'] = poster
+        
+
+class Svg(Widget):
+    def __init__(self, width, height):
+        super(Svg, self).__init__(width, height)
+        self.attributes['width'] = width
+        self.attributes['height'] = height
+        self.type = 'svg'
+        
+    def set_viewbox(self, x, y, w, h):
+        self.attributes['viewBox'] = "%s %s %s %s"%(x,y,w,h)
+        self.attributes['preserveAspectRatio'] = 'none'
+        
+
+class SvgCircle(Widget):
+    def __init__(self, x, y, radix):
+        super(SvgCircle, self).__init__(0, 0)
+        self.set_position(x, y)
+        self.set_radix(radix)
+        self.set_stroke()
+        self.type = 'circle'
+    
+    def set_position(self, x, y):
+        self.attributes['cx'] = x
+        self.attributes['cy'] = y
+        
+    def set_radix(self, radix):
+        self.attributes['r'] = radix
+        
+    def set_stroke(self, width=1, color='black'):
+        self.attributes['stroke'] = color
+        self.attributes['stroke-width'] = str(width)
+
+    def set_fill(self, color):
+        self.attributes['fill'] = color
+
+
+class SvgLine(Widget):
+    def __init__(self, x1, y1, x2, y2):
+        super(SvgLine, self).__init__(0, 0)
+        self.set_coords(x1, y1, x2, y2)
+        self.set_stroke()
+        self.type = 'line'
+    
+    def set_coords(self, x1, y1, x2, y2):
+        self.set_p1(x1, y1)
+        self.set_p2(x2, y2)
+        
+    def set_p1(self, x1, y1):
+        self.attributes['x1'] = x1
+        self.attributes['y1'] = y1
+    
+    def set_p2(self, x2, y2):
+        self.attributes['x2'] = x2
+        self.attributes['y2'] = y2
+    
+    def set_stroke(self, width=1, color='black'):
+        self.style['stroke'] = color
+        self.style['stroke-width'] = str(width)
+        
+
+class SvgPolyline(Widget):
+    def __init__(self):
+        super(SvgPolyline, self).__init__(0, 0)
+        self.set_stroke()
+        self.style['fill'] = 'none'
+        self.type = 'polyline'
+        self.coordsX = list()
+        self.coordsY = list()
+        self.max_len = 0 #no limit
+        self.attributes['points'] = ''
+
+    def add_coord(self, x, y):
+        if self.max_len > 0:
+            if len(self.coordsX) > self.max_len:
+                #we assume that if there is some chars, there is a space
+                if len(self.attributes['points']) > 1: #slower performaces if ' ' in self.attributes['points'] :
+                    self.attributes['points'] = self.attributes['points'][self.attributes['points'].find(' ')+1:]
+                self.coordsX = self.coordsX[len(self.coordsX)-self.max_len:]
+                self.coordsY = self.coordsY[len(self.coordsY)-self.max_len:]
+        self.coordsX.append(x)
+        self.coordsY.append(y)
+        self.attributes['points'] = self.attributes['points'] + "%s,%s "%(x,y)
+    
+    def set_max_len(self, value):
+        self.max_len = value
+        if len(self.coordsX) > self.max_len:
+            self.attributes['points'] = ' '.join(map(lambda x,y: str(x) + ',' + str(y), self.coordsX, self.coordsY))
+            self.coordsX = self.coordsX[len(self.coordsX)-self.max_len:]
+            self.coordsY = self.coordsY[len(self.coordsY)-self.max_len:]
+        
+    def set_stroke(self, width=1, color='black'):
+        self.style['stroke'] = color
+        self.style['stroke-width'] = str(width)
+        
+
+class SvgText(Widget):
+    def __init__(self, x, y, text):
+        super(SvgText, self).__init__(0, 0)
+        self.type = 'text'
+        self.set_position(x, y)
+        self.set_fill()
+        self.set_text(text)
+
+    def set_text(self, text):
+        self.append('text', text)
+    
+    def set_position(self, x, y):
+        self.attributes['x'] = str(x)
+        self.attributes['y'] = str(y)
+    
+    def set_fill(self, color='black'):
+        self.attributes['fill'] = color
+        
