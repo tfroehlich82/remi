@@ -25,7 +25,7 @@ except:
 import mimetypes
 import webbrowser
 import struct
-from base64 import b64encode
+import base64
 import hashlib
 import sys
 import threading
@@ -161,7 +161,7 @@ class WebSocketsHandler(socketserver.StreamRequestHandler):
                     self.handshake_done = False
                     log.debug('ws ending websocket service')
                     break
-            
+
     def bytetonum(self,b):
         if pyLessThan3:
             b = ord(b)
@@ -195,25 +195,23 @@ class WebSocketsHandler(socketserver.StreamRequestHandler):
             out.append(length)
         elif length >= 126 and length <= 65535:
             out.append(126)
-            out = out + struct.pack('>H', length)
+            out += struct.pack('>H', length)
         else:
             out.append(127)
-            out = out + struct.pack('>Q', length)
+            out += struct.pack('>Q', length)
         if not pyLessThan3:
-            message = message.encode('utf-8')#'ascii',errors='replace')
+            message = message.encode('utf-8')
         out = out + message
         self.request.send(out)
 
     def handshake(self):
         log.debug('handshake')
         data = self.request.recv(1024).strip()
-        #headers = Message(StringIO(data.split(b'\r\n', 1)[1]))
         log.debug('Handshaking...')
-        key = data.decode().split('Sec-WebSocket-Key: ')[1].split('\r\n')[0] #headers['Sec-WebSocket-Key']
-        #key = key
+        key = data.decode().split('Sec-WebSocket-Key: ')[1].split('\r\n')[0]
         digest = hashlib.sha1((key.encode("utf-8")+self.magic))
         digest = digest.digest()
-        digest = b64encode(digest)
+        digest = base64.b64encode(digest)
         response = 'HTTP/1.1 101 Switching Protocols\r\n'
         response += 'Upgrade: websocket\r\n'
         response += 'Connection: Upgrade\r\n'
@@ -239,22 +237,20 @@ class WebSocketsHandler(socketserver.StreamRequestHandler):
                 chunks = message.split('/')
                 if len(chunks) > 3:  # msgtype,widget,function,params
                     # if this is a callback
-                    msgType = 'callback'
-                    if chunks[0] == msgType:
-                        widgetID = chunks[1]
-                        functionName = chunks[2]
+                    msg_type = 'callback'
+                    if chunks[0] == msg_type:
+                        widget_id = chunks[1]
+                        function_name = chunks[2]
                         params = message[
-                            len(msgType) + len(widgetID) + len(functionName) + 3:]
+                            len(msg_type) + len(widget_id) + len(function_name) + 3:]
 
-                        paramDict = parse_parametrs(params)
-                        #print('msgType: ' + msgType + ' widgetId: ' + widgetID +
-                        #      ' function: ' + functionName + ' params: ' + str(params))
+                        param_dict = parse_parametrs(params)
 
                         for w in runtimeInstances:
-                            if str(id(w)) == widgetID:
-                                callback = get_method_by_name(w, functionName)
+                            if str(id(w)) == widget_id:
+                                callback = get_method_by_name(w, function_name)
                                 if callback is not None:
-                                    callback(**paramDict)
+                                    callback(**param_dict)
             except Exception as e:
                 log.error('error parsing websocket', exc_info=True)
 
@@ -267,24 +263,24 @@ def parse_parametrs(p):
     expecting the parameters as:  "11|par1='asd'|6|par2=1"
     returns a dict like {par1:'asd',par2:1}
     """
-    ret = dict()
+    ret = {}
     while len(p) > 1 and p.count('|') > 0:
         s = p.split('|')
         l = int(s[0])  # length of param field
         if l > 0:
             p = p[len(s[0]) + 1:]
-            fieldName = p.split('|')[0].split('=')[0]
-            fieldValue = p[len(fieldName) + 1:l]
+            field_name = p.split('|')[0].split('=')[0]
+            field_value = p[len(field_name) + 1:l]
             p = p[l + 1:]
-            if fieldValue.count("'") == 0 and fieldValue.count('"') == 0:
+            if field_value.count("'") == 0 and field_value.count('"') == 0:
                 try:
-                    fieldValue = int(fieldValue)
+                    field_value = int(field_value)
                 except ValueError:
                     try:
-                        fieldValue = float(fieldValue)
+                        field_value = float(field_value)
                     except ValueError:
                         pass
-            ret[fieldName] = fieldValue
+            ret[field_name] = field_value
     return ret
 
 
@@ -361,7 +357,7 @@ class _UpdateThread(threading.Thread):
                         if not hasattr(client, 'root'):
                             continue
                         # here we check if the root window has changed
-                        if not hasattr(client,'old_root_window') or client.old_root_window != client.root:
+                        if not hasattr(client, 'old_root_window') or client.old_root_window != client.root:
                             # a new window is shown, clean the old_runtime_widgets
                             client.old_runtime_widgets = dict()
                             for ws in client.websockets:
@@ -393,12 +389,12 @@ class App(BaseHTTPRequestHandler, object):
         self._app_args = app_args
         super(App, self).__init__(request, client_address, server)
 
-    def log_message(self, format, *args):
-        msg = format % args
+    def log_message(self, format_string, *args):
+        msg = format_string % args
         self._log.debug("%s %s" % (self.address_string(), msg))
 
-    def log_error(self, format, *args):
-        msg = format % args
+    def log_error(self, format_string, *args):
+        msg = format_string % args
         self._log.error("%s %s" % (self.address_string(), msg))
 
     def instance(self):
@@ -617,7 +613,7 @@ function uploadFile(widgetID, eventSuccess, eventFail, savePath,file){
             savepath = self.headers['savepath']
             filename = self.headers['filename']
             form = cgi.FieldStorage(
-                fp=self.rfile, 
+                fp=self.rfile,
                 headers=self.headers,
                 environ={'REQUEST_METHOD':'POST',
                         'CONTENT_TYPE':self.headers['Content-Type'],
@@ -645,16 +641,37 @@ function uploadFile(widgetID, eventSuccess, eventFail, savePath,file){
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
 
+    def do_AUTHHEAD(self):
+        self.send_response(401)
+        self.send_header('WWW-Authenticate', 'Basic realm=\"Protected\"')
+        self.send_header('Content-type', 'text/html')
+        self.end_headers()
+
     def do_GET(self):
         """Handler for the GET requests."""
-        self.instance()
-        path = str(unquote(self.path))
-        self.process_all(path)
-        return
+        do_process = False
+        if self.server.auth is None:
+            do_process = True
+        else:
+            if self.headers.getheader('Authorization') is None:
+                log.info("Authenticating")
+                self.do_AUTHHEAD()
+                self.wfile.write('no auth header received')
+            elif self.headers.getheader('Authorization') == 'Basic ' + self.server.auth:
+                do_process = True
+            else:
+                self.do_AUTHHEAD()
+                self.wfile.write(self.headers.getheader('Authorization'))
+                self.wfile.write('not authenticated')
+
+        if do_process:
+            self.instance()
+            path = str(unquote(self.path))
+            self.process_all(path)
 
     def process_all(self, function):
         static_file = re.match(r"^/*res\/(.*)$", function)
-        attr_call = re.match(r"^\/*(\w+)\/(\w+)\?{0,1}(\w*\={1}\w+\${0,1})*$", function)#re.match(r"^\/*(\w+)\/(\w+)\?*(\w*)$", function)
+        attr_call = re.match(r"^\/*(\w+)\/(\w+)\?{0,1}(\w*\={1}\w+\${0,1})*$", function)
         if (function == '/') or (not function):
             # build the root page once if necessary
             should_call_main = not hasattr(self.client, 'root')
@@ -681,6 +698,7 @@ function uploadFile(widgetID, eventSuccess, eventFail, savePath,file){
             static_paths = [os.path.join(os.path.dirname(__file__), 'res')]
             static_paths.extend(self._app_args.get('static_paths', ()))
 
+            filename = None
             found = False
             for s in reversed(static_paths):
                 filename = os.path.join(s, static_file.groups()[0])
@@ -706,7 +724,7 @@ function uploadFile(widgetID, eventSuccess, eventFail, savePath,file){
             param_dict = parse_qs(urlparse(function).query)
             for k in param_dict:
                 params.append(param_dict[k])
-            
+
             widget,function = attr_call.group(1,2)
             try:
                 content,headers = get_method_by(get_method_by(self.client.root, widget), function)(*params)
@@ -730,10 +748,11 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
     def __init__(self, server_address, RequestHandlerClass, websocket_address,
-                 multiple_instance, enable_file_cache, update_interval,
+                 auth, multiple_instance, enable_file_cache, update_interval,
                  websocket_timeout_timer_ms, pending_messages_queue_length, *userdata):
         HTTPServer.__init__(self, server_address, RequestHandlerClass)
         self.websocket_address = websocket_address
+        self.auth = auth
         self.multiple_instance = multiple_instance
         self.enable_file_cache = enable_file_cache
         self.update_interval = update_interval
@@ -743,9 +762,10 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
 
 
 class Server(object):
-    def __init__(self, gui_class, start=True, address='127.0.0.1', port=8081, multiple_instance=False,
-                 enable_file_cache=True, update_interval=0.1, start_browser=True, websocket_timeout_timer_ms=1000,
-                 pending_messages_queue_length=1000, userdata=()):
+    def __init__(self, gui_class, start=True, address='127.0.0.1', port=8081, username=None, password=None,
+                 multiple_instance=False, enable_file_cache=True, update_interval=0.1, start_browser=True,
+                 websocket_timeout_timer_ms=1000, pending_messages_queue_length=1000,
+                 userdata=()):
         self._gui = gui_class
         self._wsserver = self._sserver = None
         self._wsth = self._sth = None
@@ -757,6 +777,10 @@ class Server(object):
         self._start_browser = start_browser
         self._websocket_timeout_timer_ms = websocket_timeout_timer_ms
         self._pending_messages_queue_length = pending_messages_queue_length
+        if username and password:
+            self._auth = base64.b64encode("%s:%s" % (username,password))
+        else:
+            self._auth = None
 
         if not isinstance(userdata, tuple):
             raise ValueError('userdata must be a tuple')
@@ -772,11 +796,12 @@ class Server(object):
         self._wsth = threading.Thread(target=self._wsserver.serve_forever)
         self._wsth.daemon = True
         self._wsth.start()
-        
+
         # Create a web server and define the handler to manage the incoming
         # request
         self._sserver = ThreadedHTTPServer((self._address, self._sport), self._gui,
-                                           (wshost, wsport), self._multiple_instance, self._enable_file_cache,
+                                           (wshost, wsport), self._auth,
+                                           self._multiple_instance, self._enable_file_cache,
                                            self._update_interval, self._websocket_timeout_timer_ms,
                                            self._pending_messages_queue_length, *userdata)
         shost, sport = self._sserver.socket.getsockname()[:2]

@@ -15,6 +15,7 @@
 import os
 import logging
 from functools import cmp_to_key
+import collections
 
 from .server import runtimeInstances, update_event
 
@@ -57,6 +58,7 @@ class EventManager(object):
 
 
 class Tag(object):
+
     def __init__(self):
         # the runtime instances are processed every time a requests arrives, searching for the called method
         # if a class instance is not present in the runtimeInstances, it will
@@ -96,35 +98,38 @@ class Tag(object):
                                    self.type)
         return html
 
-    def append(self, key, value):
-        """it allows to add child to this.
+    def add_child(self, key, child):
+        """add a child to the widget
 
-        The key can be everything you want, in order to access to the
-        specific child in this way 'widget.children[key]'.
-
+        The key can be everything you want. To retrieve the child call get_child
         """
-        if hasattr(value, 'attributes'):
-            value.attributes['parent_widget'] = str(id(self))
+        if hasattr(child, 'attributes'):
+            child.attributes['parent_widget'] = str(id(self))
 
         if key in self.children:
             self._render_children_list.remove(self.children[key])
-        self._render_children_list.append(value)
+        self._render_children_list.append(child)
 
-        self.children[key] = value
+        self.children[key] = child
+
+    def get_child(self, key):
+        """return the child called 'key'"""
+        return self.children[key]
 
     def empty(self):
+        """remove all children from the widget"""
         for k in list(self.children.keys()):
-            self.remove(self.children[k])
+            self.remove_child(self.children[k])
 
-    def remove(self, child):
+    def remove_child(self, child):
+        """remove a child instance from the widget"""
         if child in self.children.values():
-            #runtimeInstances.pop( runtimeInstances.index( self.children[key] ) )
             self._render_children_list.remove(child)
             for k in self.children.keys():
                 if str(id(self.children[k])) == str(id(child)):
                     self.children.pop(k)
-                    #when the child is removed we stop the iteration
-                    #this implies that a child replication should not be allowed
+                    # when the child is removed we stop the iteration
+                    # this implies that a child replication should not be allowed
                     break
 
 
@@ -200,32 +205,37 @@ class Widget(Tag):
         self.attributes['style'] = jsonize(self.style)
         return super(Widget,self).repr(client, include_children)
 
-    def append(self, key, value):
+    def append(self, value, key=''):
         """it allows to add child widgets to this.
 
         The key can be everything you want, in order to access to the
         specific child in this way 'widget.children[key]'.
 
         """
-        super(Widget,self).append(key, value)
+        if not isinstance(value, Widget):
+            raise ValueError('value should be a Widget (otherwise use add_child(key,other)')
 
-        if hasattr(self.children[key], 'style'):
-            spacing = to_pix(self.widget_spacing)
-            selfHeight = 0
-            selfWidth = 0
-            if 'height' in self.style.keys() and 'height' in self.children[key].style.keys():
-                selfHeight = from_pix(self.style['height']) - from_pix(self.children[key].style['height'])
-            if 'width' in self.style.keys() and 'width' in self.children[key].style.keys():
-                selfWidth = from_pix(self.style['width']) - from_pix(self.children[key].style['width'])
-            self.children[key].style['margin'] = spacing + " " + to_pix(selfWidth/2)
-            
-            if self.layout_orientation:
-                self.children[key].style['margin'] = to_pix(selfHeight/2) + " " + spacing
-                if 'float' in self.children[key].style.keys():
-                    if not (self.children[key].style['float'] == 'none'):
-                        self.children[key].style['float'] = 'left'
-                else:
+        key = str(id(value)) if not key else key
+        self.add_child(key, value)
+
+        spacing = to_pix(self.widget_spacing)
+        this_height = 0
+        this_width = 0
+        if 'height' in self.style.keys() and 'height' in self.children[key].style.keys():
+            this_height = from_pix(self.style['height']) - from_pix(self.children[key].style['height'])
+        if 'width' in self.style.keys() and 'width' in self.children[key].style.keys():
+            this_width = from_pix(self.style['width']) - from_pix(self.children[key].style['width'])
+        self.children[key].style['margin'] = spacing + " " + to_pix(this_width/2)
+
+        if self.layout_orientation:
+            self.children[key].style['margin'] = to_pix(this_height/2) + " " + spacing
+            if 'float' in self.children[key].style.keys():
+                if not (self.children[key].style['float'] == 'none'):
                     self.children[key].style['float'] = 'left'
+            else:
+                self.children[key].style['float'] = 'left'
+
+        return key
 
     def onfocus(self):
         return self.eventManager.propagate(self.EVENT_ONFOCUS, [])
@@ -355,7 +365,7 @@ class Button(Widget):
         self.set_text(text)
 
     def set_text(self, t):
-        self.append('text', t)
+        self.add_child('text', t)
 
 
 class TextInput(Widget):
@@ -379,10 +389,10 @@ class TextInput(Widget):
 
     def set_text(self, t):
         """sets the text content."""
-        self.append('text', t)
+        self.add_child('text', t)
 
     def get_text(self):
-        return self.children['text']
+        return self.get_child('text')
 
     def set_value(self, t):
         self.set_text(t)
@@ -432,13 +442,13 @@ class Label(Widget):
     def __init__(self, w, h, text):
         super(Label, self).__init__(w, h)
         self.type = 'p'
-        self.append('text', text)
+        self.set_text(text)
 
     def set_text(self, t):
-        self.append('text', t)
+        self.add_child('text', t)
 
     def get_text(self):
-        return self.children['text']
+        return self.get_child('text')
 
 
 class GenericDialog(Widget):
@@ -458,28 +468,28 @@ class GenericDialog(Widget):
             t = Label(self.width - 20, 50, title)
             t.style['font-size'] = '16px'
             t.style['font-weight'] = 'bold'
-            self.append('1', t)
-            self.height = self.height + 50
+            self.append(t)
+            self.height += 50
             self.style['height'] = to_pix(from_pix(self.style['height']) + 50)
-            
+
         if len(message) > 0:
             m = Label(self.width - 20, 30, message)
-            self.append('2', m)
-            self.height = self.height + 30
+            self.append(m)
+            self.height += 30
             self.style['height'] = to_pix(from_pix(self.style['height']) + 30)
-        
+
         self.container = Widget(self.width - 20,0, Widget.LAYOUT_VERTICAL, 0)
         self.conf = Button(50, 30, 'Ok')
         self.cancel = Button(50, 30, 'Cancel')
 
         hlay = Widget(self.width - 20, 30)
-        hlay.append('1', self.conf)
-        hlay.append('2', self.cancel)
+        hlay.append(self.conf)
+        hlay.append(self.cancel)
         self.conf.style['float'] = 'right'
         self.cancel.style['float'] = 'right'
 
-        self.append('3', self.container)
-        self.append('4', hlay)
+        self.append(self.container)
+        self.append(hlay)
 
         self.conf.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONCONFIRM)
         self.cancel.attributes[self.EVENT_ONCLICK] = "sendCallback('%s','%s');" % (id(self), self.EVENT_ONCANCEL)
@@ -497,11 +507,11 @@ class GenericDialog(Widget):
         self.inputs[key] = field
         label = Label(self.width-20-field_width-1, 30, labelDescription )
         container = Widget(self.width-20, field_height, Widget.LAYOUT_HORIZONTAL, fields_spacing)
-        container.append('lbl' + key,label)
-        container.append(key, self.inputs[key])
-        self.container.append(key, container)
-        
-    def add_field(self,key,field):
+        container.append(label, key='lbl' + key)
+        container.append(self.inputs[key], key=key)
+        self.container.append(container, key=key)
+
+    def add_field(self, key, field):
         fields_spacing = 5
         field_height = from_pix(field.style['height']) + fields_spacing*2
         field_width = from_pix(field.style['width']) + fields_spacing*2
@@ -509,8 +519,8 @@ class GenericDialog(Widget):
         self.container.style['height'] = to_pix(from_pix(self.container.style['height']) + field_height)
         self.inputs[key] = field
         container = Widget(self.width-20, field_height, Widget.LAYOUT_HORIZONTAL, fields_spacing)
-        container.append(key, self.inputs[key])
-        self.container.append(key, container)
+        container.append(self.inputs[key], key=key)
+        self.container.append(container, key=key)
 
     def get_field(self, key):
         return self.inputs[key]
@@ -578,17 +588,17 @@ class ListView(Widget):
         self.selected_item = None
         self.selected_key = None
 
-    def append(self, key, item):
+    def append(self, item, key=''):
         # if an event listener is already set for the added item, it will not generate a selection event
         if item.attributes[self.EVENT_ONCLICK] == '':
             item.set_on_click_listener(self, self.EVENT_ONSELECTION)
         item.attributes['selected'] = False
-        super(ListView, self).append(key, item)
-    
+        super(ListView, self).append(item, key=key)
+
     def empty(self):
         self.selected_item = None
         self.selected_key = None
-        super(ListView,self).empty()
+        super(ListView, self).empty()
 
     def onselection(self, clicked_item):
         self.selected_key = None
@@ -662,10 +672,10 @@ class ListItem(Widget):
         self.set_text(text)
 
     def set_text(self, text):
-        self.append('text', text)
+        self.add_child('text', text)
 
     def get_text(self):
-        return self.children['text']
+        return self.get_child('text')
 
     def get_value(self):
         return self.get_text()
@@ -749,7 +759,7 @@ class DropDownItem(Widget):
 
     def set_text(self, text):
         self.attributes['value'] = text
-        self.append('text', text)
+        self.add_child('text', text)
 
     def get_text(self):
         return self.attributes['value']
@@ -782,14 +792,14 @@ class Table(Widget):
         super(Table, self).__init__(w, h)
         self.type = 'table'
         self.style['float'] = 'none'
-        
+
     def from_2d_matrix(self, _matrix, fill_title=True):
         """
         Fills the table with the data contained in the provided 2d _matrix
         The first row of the matrix is set as table title
         """
         for child_keys in list(self.children):
-            self.remove(self.children[child_keys])
+            self.remove_child(self.children[child_keys])
         first_row = True
         for row in _matrix:
             tr = TableRow()
@@ -798,8 +808,8 @@ class Table(Widget):
                     ti = TableTitle(item)
                 else:
                     ti = TableItem(item)
-                tr.append( str(id(ti)), ti )
-            self.append( str(id(tr)), tr )
+                tr.append(ti)
+            self.append(tr)
             first_row = False
 
 
@@ -822,8 +832,8 @@ class TableItem(Widget):
     def __init__(self, text=''):
         super(TableItem, self).__init__(-1, -1)
         self.type = 'td'
-        self.append('text', text)
         self.style['float'] = 'none'
+        self.add_child('text', text)
 
 
 class TableTitle(Widget):
@@ -833,8 +843,8 @@ class TableTitle(Widget):
     def __init__(self, title=''):
         super(TableTitle, self).__init__(-1, -1)
         self.type = 'th'
-        self.append('text', title)
         self.style['float'] = 'none'
+        self.add_child('text', title)
 
 
 class Input(Widget):
@@ -870,13 +880,14 @@ class Input(Widget):
 
 class CheckBoxLabel(Widget):
     def __init__(self, w, h, label='', checked=False, user_data=''):
+
         super(CheckBoxLabel, self).__init__(w, h, Widget.LAYOUT_HORIZONTAL)
         inner_checkbox_width = 30
         inner_label_padding_left = 10
         self._checkbox = CheckBox(inner_checkbox_width, h, checked, user_data)
         self._label = Label(w-inner_checkbox_width-inner_label_padding_left, h, label)
-        self.append('checkbox', self._checkbox)
-        self.append('label', self._label)
+        self.append(self._checkbox, key='checkbox')
+        self.append(self._label, key='label')
         self._label.style['padding-left'] = to_pix(inner_label_padding_left)
 
         self.set_value = self._checkbox.set_value
@@ -992,16 +1003,16 @@ class FileFolderNavigator(Widget):
         self.pathEditor = TextInput(w-90, 25)
         self.pathEditor.style['resize'] = 'none'
         self.pathEditor.attributes['rows'] = '1'
-        self.controlsContainer.append('1', self.controlBack)
-        self.controlsContainer.append('2', self.pathEditor)
-        self.controlsContainer.append('3', self.controlGo)
+        self.controlsContainer.append(self.controlBack)
+        self.controlsContainer.append(self.pathEditor)
+        self.controlsContainer.append(self.controlGo)
 
         self.itemContainer = Widget(w, h-25, Widget.LAYOUT_VERTICAL)
         self.itemContainer.style['overflow-y'] = 'scroll'
         self.itemContainer.style['overflow-x'] = 'hidden'
 
-        self.append('controls', self.controlsContainer)
-        self.append('items', self.itemContainer)
+        self.append(self.controlsContainer)
+        self.append(self.itemContainer, key='items')  # defined key as this is replaced later
 
         self.folderItems = list()
 
@@ -1034,7 +1045,7 @@ class FileFolderNavigator(Widget):
         self.lastValidPath = directory 
         # we remove the container avoiding graphic update adding items
         # this speeds up the navigation
-        self.remove(self.itemContainer)
+        self.remove_child(self.itemContainer)
         # creation of a new instance of a itemContainer
         self.itemContainer = Widget(self.w,self.h-25,Widget.LAYOUT_VERTICAL)
         self.itemContainer.style['overflow-y'] = 'scroll'
@@ -1047,8 +1058,8 @@ class FileFolderNavigator(Widget):
             fi.set_on_click_listener(self, 'on_folder_item_click')  # navigation purpose
             fi.set_on_selection_listener(self, 'on_folder_item_selected')  # selection purpose
             self.folderItems.append(fi)
-            self.itemContainer.append(i, fi)
-        self.append('items', self.itemContainer)
+            self.itemContainer.append(fi)
+        self.append(self.itemContainer, key='items')  # replace the old widget
 
     def dir_go_back(self):
         curpath = os.getcwd()  # backup the path
@@ -1076,7 +1087,7 @@ class FileFolderNavigator(Widget):
         curpath = os.getcwd()  # backup the path
         log.debug("FileFolderNavigator - chdir: %s" % directory)
         for c in self.folderItems:
-            self.itemContainer.remove(c)  # remove the file and folders from the view
+            self.itemContainer.remove_child(c)  # remove the file and folders from the view
         self.folderItems = []
         self.selectionlist = []  # reset selected file list
         os.chdir(directory)
@@ -1127,8 +1138,8 @@ class FileFolderItem(Widget):
         self.icon.style['background-image'] = "url('%s')" % icon_file
         self.label = Label(w-33, h, text)
         self.label.set_on_click_listener(self, self.EVENT_ONSELECTION)
-        self.append('icon', self.icon)
-        self.append('text', self.label)
+        self.append(self.icon, key='icon')
+        self.append(self.label, key='text')
         self.selected = False
 
     def onclick(self):
@@ -1205,23 +1216,22 @@ class MenuItem(Widget):
         super(MenuItem, self).__init__(w, h)
         self.w = w
         self.h = h
-        self.subcontainer = None
+        self.sub_container = None
         self.type = 'li'
         self.attributes[self.EVENT_ONCLICK] = ''
         self.set_text(text)
-        self.append = self.addSubMenu
 
-    def addSubMenu(self, key, value):
-        if self.subcontainer is None:
-            self.subcontainer = Menu(self.w, self.h, Widget.LAYOUT_VERTICAL)
-            super(MenuItem, self).append('subcontainer', self.subcontainer)
-        self.subcontainer.append(key, value)
+    def append(self, value, key=''):
+        if self.sub_container is None:
+            self.sub_container = Menu(self.w, self.h, Widget.LAYOUT_VERTICAL)
+            super(MenuItem, self).append(self.sub_container, key='subcontainer')
+        self.sub_container.append(value, key=key)
 
     def set_text(self, text):
-        self.append('text', text)
+        self.add_child('text', text)
 
     def get_text(self):
-        return self.children['text']
+        return self.get_child('text')
 
 
 class FileUploader(Widget):
@@ -1280,7 +1290,7 @@ class FileDownloader(Widget):
         self._path_separator = path_separator
 
     def set_text(self, t):
-        self.append('text', t)
+        self.add_child('text', t)
 
     def download(self):
         with open(self._filename, 'r+b') as f:
@@ -1301,13 +1311,13 @@ class Link(Widget):
         self.set_text(text)
 
     def set_text(self, t):
-        self.append('text', t)
+        self.add_child('text', t)
 
     def get_text(self):
-        return self.children['text']
+        return self.get_child('text')
 
     def get_url(self):
-        return self.children['href']
+        return self.attributes['href']
 
 
 class VideoPlayer(Widget):
@@ -1319,7 +1329,7 @@ class VideoPlayer(Widget):
         self.attributes['preload'] = 'auto'
         self.attributes['controls'] = None
         self.attributes['poster'] = poster
-        
+
 
 class Svg(Widget):
     def __init__(self, width, height):
@@ -1327,11 +1337,11 @@ class Svg(Widget):
         self.attributes['width'] = width
         self.attributes['height'] = height
         self.type = 'svg'
-        
+
     def set_viewbox(self, x, y, w, h):
-        self.attributes['viewBox'] = "%s %s %s %s"%(x,y,w,h)
+        self.attributes['viewBox'] = "%s %s %s %s" % (x, y, w, h)
         self.attributes['preserveAspectRatio'] = 'none'
-        
+
 
 class SvgCircle(Widget):
     def __init__(self, x, y, radix):
@@ -1340,14 +1350,14 @@ class SvgCircle(Widget):
         self.set_radix(radix)
         self.set_stroke()
         self.type = 'circle'
-    
+
     def set_position(self, x, y):
         self.attributes['cx'] = x
         self.attributes['cy'] = y
-        
+
     def set_radix(self, radix):
         self.attributes['r'] = radix
-        
+
     def set_stroke(self, width=1, color='black'):
         self.attributes['stroke'] = color
         self.attributes['stroke-width'] = str(width)
@@ -1362,58 +1372,49 @@ class SvgLine(Widget):
         self.set_coords(x1, y1, x2, y2)
         self.set_stroke()
         self.type = 'line'
-    
+
     def set_coords(self, x1, y1, x2, y2):
         self.set_p1(x1, y1)
         self.set_p2(x2, y2)
-        
+
     def set_p1(self, x1, y1):
         self.attributes['x1'] = x1
         self.attributes['y1'] = y1
-    
+
     def set_p2(self, x2, y2):
         self.attributes['x2'] = x2
         self.attributes['y2'] = y2
-    
+
     def set_stroke(self, width=1, color='black'):
         self.style['stroke'] = color
         self.style['stroke-width'] = str(width)
-        
+
 
 class SvgPolyline(Widget):
-    def __init__(self):
+    def __init__(self, _maxlen=None):
         super(SvgPolyline, self).__init__(0, 0)
         self.set_stroke()
         self.style['fill'] = 'none'
         self.type = 'polyline'
-        self.coordsX = list()
-        self.coordsY = list()
-        self.max_len = 0 #no limit
+        self.coordsX = collections.deque(maxlen=_maxlen)
+        self.coordsY = collections.deque(maxlen=_maxlen)
+        self.maxlen = _maxlen  # no limit
         self.attributes['points'] = ''
+        self.attributes['vector-effect'] = 'non-scaling-stroke'
 
     def add_coord(self, x, y):
-        if self.max_len > 0:
-            if len(self.coordsX) > self.max_len:
-                #we assume that if there is some chars, there is a space
-                if len(self.attributes['points']) > 1: #slower performaces if ' ' in self.attributes['points'] :
-                    self.attributes['points'] = self.attributes['points'][self.attributes['points'].find(' ')+1:]
-                self.coordsX = self.coordsX[len(self.coordsX)-self.max_len:]
-                self.coordsY = self.coordsY[len(self.coordsY)-self.max_len:]
+        if len(self.coordsX) == self.maxlen:
+            spacepos = self.attributes['points'].find(' ')
+            if spacepos > 0:
+                self.attributes['points'] = self.attributes['points'][spacepos + 1:]
         self.coordsX.append(x)
         self.coordsY.append(y)
-        self.attributes['points'] = self.attributes['points'] + "%s,%s "%(x,y)
-    
-    def set_max_len(self, value):
-        self.max_len = value
-        if len(self.coordsX) > self.max_len:
-            self.attributes['points'] = ' '.join(map(lambda x,y: str(x) + ',' + str(y), self.coordsX, self.coordsY))
-            self.coordsX = self.coordsX[len(self.coordsX)-self.max_len:]
-            self.coordsY = self.coordsY[len(self.coordsY)-self.max_len:]
-        
+        self.attributes['points'] += "%s,%s " % (x, y)
+
     def set_stroke(self, width=1, color='black'):
         self.style['stroke'] = color
         self.style['stroke-width'] = str(width)
-        
+
 
 class SvgText(Widget):
     def __init__(self, x, y, text):
@@ -1424,12 +1425,11 @@ class SvgText(Widget):
         self.set_text(text)
 
     def set_text(self, text):
-        self.append('text', text)
-    
+        self.add_child('text', text)
+
     def set_position(self, x, y):
         self.attributes['x'] = str(x)
         self.attributes['y'] = str(y)
-    
+
     def set_fill(self, color='black'):
         self.attributes['fill'] = color
-        

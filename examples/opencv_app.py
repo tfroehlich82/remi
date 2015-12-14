@@ -22,7 +22,7 @@ from remi import start, App
 
 class OpencvVideoWidget(gui.Image):
     def __init__(self, width, height, video_source=0, fps=5):
-        super(OpencvVideoWidget, self).__init__(width, height, "/%s/get_image_data")
+        super(OpencvVideoWidget, self).__init__(width, height, "/%s/get_image_data" % id(self))
 
         self.fps = fps
         self.capture = cv2.VideoCapture(video_source)
@@ -30,11 +30,11 @@ class OpencvVideoWidget(gui.Image):
         javascript_code = gui.Tag()
         javascript_code.type = 'script'
         javascript_code.attributes['type'] = 'text/javascript'
-        javascript_code.append("""
+        javascript_code.add_child('code', """
             function update_image%(id)s(){
                 if(document.getElementById('%(id)s').getAttribute('play')=='False')
                     return;
-                    
+
                 var url = '/%(id)s/get_image_data';
                 var xhr = new XMLHttpRequest();
                 xhr.open('GET', url, true);
@@ -48,9 +48,9 @@ class OpencvVideoWidget(gui.Image):
             };
 
             setInterval( update_image%(id)s, %(update_rate)s );
-            """ % {'id':id(self), 'update_rate':1000/self.fps})
+            """ % {'id': id(self), 'update_rate': 1000.0 / self.fps})
 
-        self.append(javascript_code)
+        self.add_child('javascript_code', javascript_code)
         self.play()
 
     def play(self):
@@ -64,14 +64,13 @@ class OpencvVideoWidget(gui.Image):
         if ret:
             ret, jpeg = cv2.imencode('.jpg', frame)
             if ret:
-                headers = {'Content-type':'image/jpeg'}
+                headers = {'Content-type': 'image/jpeg'}
                 # tostring is an alias to tobytes, which wasn't added till numpy 1.9
                 return [jpeg.tostring(), headers]
-        return None,None
+        return None, None
 
 
 class MyApp(App):
-
     def __init__(self, *args):
         super(MyApp, self).__init__(*args)
 
@@ -80,27 +79,27 @@ class MyApp(App):
         wid = gui.Widget(640, 600, False, 10)
         self.opencvideo_widget = OpencvVideoWidget(620, 530, 0, 10)
 
-        self.menu = gui.Menu(620, 30)
+        menu = gui.Menu(620, 30)
         m1 = gui.MenuItem(100, 30, 'Video')
         m11 = gui.MenuItem(100, 30, 'Play')
         m12 = gui.MenuItem(100, 30, 'Stop')
-        m11.set_on_click_listener(self.menu_play_clicked)
-        m12.set_on_click_listener(self.menu_stop_clicked)
+        m11.set_on_click_listener(self, 'menu_play_clicked')
+        m12.set_on_click_listener(self, 'menu_stop_clicked')
 
-        self.menu.append(m1)
+        menu.append(m1)
         m1.append(m11)
         m1.append(m12)
 
-        wid.append(self.menu)
+        wid.append(menu)
         wid.append(self.opencvideo_widget)
 
         # returning the root widget
         return wid
 
-    def menu_play_clicked(self, evt):
+    def menu_play_clicked(self):
         self.opencvideo_widget.play()
 
-    def menu_stop_clicked(self, evt):
+    def menu_stop_clicked(self):
         self.opencvideo_widget.stop()
 
 

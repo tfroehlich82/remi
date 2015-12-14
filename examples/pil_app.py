@@ -25,27 +25,26 @@ class PILImageViewverWidget(gui.Image):
     def __init__(self, width, height, pil_image=None):
         super(PILImageViewverWidget, self).__init__(width, height, "/res/logo.png")
         self._buf = None
-    
+
     def load(self, file_path_name):
         pil_image = PIL.Image.open(file_path_name)
         self._buf = io.BytesIO()
         pil_image.save(self._buf, format='png')
         self.refresh()
-    
+
     def refresh(self):
-        i = int(time.time()*1e6)
-        self.attributes['src'] = "/%s/get_image_data?update_index=%d" % (id(self),i)
-        
-    def get_image_data(self,update_index):
+        i = int(time.time() * 1e6)
+        self.attributes['src'] = "/%s/get_image_data?update_index=%d" % (id(self), i)
+
+    def get_image_data(self, update_index):
         if self._buf is None:
             return None
         self._buf.seek(0)
-        headers = {'Content-type':'image/png'}
-        return [self._buf.read(),headers]
+        headers = {'Content-type': 'image/png'}
+        return [self._buf.read(), headers]
 
 
 class MyApp(App):
-
     def __init__(self, *args):
         super(MyApp, self).__init__(*args)
 
@@ -58,32 +57,34 @@ class MyApp(App):
         m1 = gui.MenuItem(100, 30, 'File')
         m11 = gui.MenuItem(100, 30, 'Save')
         m12 = gui.MenuItem(100, 30, 'Open')
-        m12.set_on_click_listener(self.menu_open_clicked)
+        m12.set_on_click_listener(self, 'menu_open_clicked')
         m111 = gui.MenuItem(100, 30, 'Save')
+        m111.set_on_click_listener(self, 'menu_save_clicked')
         m112 = gui.MenuItem(100, 30, 'Save as')
+        m112.set_on_click_listener(self, 'menu_saveas_clicked')
 
         self.menu.append(m1)
         m1.append(m11)
         m1.append(m12)
         m11.append(m111)
         m11.append(m112)
-        
+
         wid.append(self.menu)
         wid.append(self.image_widget)
-        
+
         # returning the root widget
         return wid
 
-    def menu_open_clicked(self, evt):
-        self.fileselectionDialog = gui.FileSelectionDialog( 600, 310, 
-            'File Selection Dialog', 'Select an image file',False,'.')
+    def menu_open_clicked(self):
+        self.fileselectionDialog = gui.FileSelectionDialog(600, 310,
+                                                           'File Selection Dialog', 'Select an image file', False, '.')
         self.fileselectionDialog.set_on_confirm_value_listener(
-            self.on_image_file_selected)
+            self, 'on_image_file_selected')
         # here is returned the Input Dialog widget, and it will be shown
         self.fileselectionDialog.show(self)
 
-    def on_image_file_selected(self, evt, file_list):
-        if len(file_list)<1:
+    def on_image_file_selected(self, file_list):
+        if len(file_list) < 1:
             return
         self.image_widget.load(file_list[0])
 

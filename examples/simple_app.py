@@ -17,7 +17,6 @@ from remi import start, App
 
 
 class MyApp(App):
-
     def __init__(self, *args):
         super(MyApp, self).__init__(*args)
 
@@ -28,9 +27,10 @@ class MyApp(App):
         self.bt = gui.Button(100, 30, 'Press me!')
 
         # setting the listener for the onclick event of the button
-        self.bt.set_on_click_listener(self.on_button_pressed)
+        self.npressed = 0
+        self.bt.set_on_click_listener(self, 'on_button_pressed')
 
-        # appending a widget to another
+        # appending a widget to another, the first argument is a string key
         wid.append(self.lbl)
         wid.append(self.bt)
 
@@ -38,9 +38,11 @@ class MyApp(App):
         return wid
 
     # listener function
-    def on_button_pressed(self, evt):
-        self.lbl.set_text('Button pressed!')
+    def on_button_pressed(self):
+        self.npressed += 1
+        self.lbl.set_text('Button pressed %s times' % self.npressed)
         self.bt.set_text('Hi!')
+
 
 if __name__ == "__main__":
     # starts the webserver
