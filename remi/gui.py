@@ -215,7 +215,7 @@ class Widget(Tag):
         if not isinstance(value, Widget):
             raise ValueError('value should be a Widget (otherwise use add_child(key,other)')
 
-        key = str(id(value)) if not key else key
+        key = str(id(value)) if key=='' else key
         self.add_child(key, value)
 
         spacing = to_pix(self.widget_spacing)
@@ -590,9 +590,12 @@ class ListView(Widget):
 
     @classmethod
     def new_from_list(cls, w, h, items):
+        """
+            the items are appended with an string enumeration key
+        """
         obj = cls(w,h)
-        for item in items:
-            obj.append(item)
+        for key,item in enumerate(items):
+            obj.append(item,str(key))
         return obj
 
     def append(self, item, key=''):
