@@ -241,14 +241,14 @@ class Widget(Tag):
         return self.eventManager.propagate(self.EVENT_ONFOCUS, [])
 
     def set_on_focus_listener(self, listener, funcname):
-        self.attributes[self.EVENT_ONFOCUS] = "sendCallback('%s','%s');event.stopPropagation();event.preventDefault();" % (id(self), self.EVENT_ONFOCUS)
+        self.attributes[self.EVENT_ONFOCUS] = "sendCallback('%s','%s');event.stopPropagation();event.preventDefault();return false;" % (id(self), self.EVENT_ONFOCUS)
         self.eventManager.register_listener(self.EVENT_ONFOCUS, listener, funcname)
 
     def onblur(self):
         return self.eventManager.propagate(self.EVENT_ONBLUR, [])
 
     def set_on_blur_listener(self, listener, funcname):
-        self.attributes[self.EVENT_ONBLUR] = "sendCallback('%s','%s');event.stopPropagation();event.preventDefault();" % (id(self), self.EVENT_ONBLUR)
+        self.attributes[self.EVENT_ONBLUR] = "sendCallback('%s','%s');event.stopPropagation();event.preventDefault();return false;" % (id(self), self.EVENT_ONBLUR)
         self.eventManager.register_listener(self.EVENT_ONBLUR, listener, funcname)
 
     def show(self, baseAppInstance):
@@ -1002,12 +1002,14 @@ class FileFolderNavigator(Widget):
 
     """FileFolderNavigator widget."""
 
-    def __init__(self, w, h, multiple_selection,selection_folder):
+    def __init__(self, w, h, multiple_selection,selection_folder,allow_file_selection, 
+                                                       allow_folder_selection):
         super(FileFolderNavigator, self).__init__(w, h, Widget.LAYOUT_VERTICAL)
         self.w = w
         self.h = h
         self.multiple_selection = multiple_selection
-
+        self.allow_file_selection = allow_file_selection 
+        self.allow_folder_selection = allow_folder_selection
         self.selectionlist = []
         self.controlsContainer = Widget(w, 25, Widget.LAYOUT_HORIZONTAL)
         self.controlBack = Button(45, 25, 'Up')
@@ -1068,6 +1070,8 @@ class FileFolderNavigator(Widget):
         for i in l:
             full_path = os.path.join(directory, i)
             is_folder = not os.path.isfile(full_path)
+            if not is_folder and (self.allow_file_selection == False):
+                continue
             fi = FileFolderItem(self.w, 33, i, is_folder)
             fi.set_on_click_listener(self, 'on_folder_item_click')  # navigation purpose
             fi.set_on_selection_listener(self, 'on_folder_item_selected')  # selection purpose
@@ -1111,6 +1115,10 @@ class FileFolderNavigator(Widget):
         os.chdir(curpath)  # restore the path
 
     def on_folder_item_selected(self,folderitem):
+        if folderitem.isFolder and self.allow_folder_selection == False:
+            folderitem.set_selected(False)
+            return
+                
         if not self.multiple_selection:
             self.selectionlist = []
             for c in self.folderItems:
@@ -1141,6 +1149,7 @@ class FileFolderItem(Widget):
 
     def __init__(self, w, h, text, isFolder=False):
         super(FileFolderItem, self).__init__(w, h, Widget.LAYOUT_HORIZONTAL)
+        self.isFolder = isFolder
         self.EVENT_ONSELECTION = 'onselection'
         self.attributes[self.EVENT_ONCLICK] = ''
         self.icon = Widget(33, h)
@@ -1187,10 +1196,13 @@ class FileSelectionDialog(GenericDialog):
     implementing the "confirm_value" and "cancel_dialog" events."""
 
     def __init__(self, width = 600, fileFolderNavigatorHeight=210, title='File dialog',
-                 message='Select files and folders', multiple_selection=True, selection_folder='.'):
+                 message='Select files and folders', multiple_selection=True, selection_folder='.', 
+                 allow_file_selection=True, allow_folder_selection=True):
         super(FileSelectionDialog, self).__init__(width, 80, title, message)
         self.fileFolderNavigator = FileFolderNavigator(width-30, fileFolderNavigatorHeight,
-                                                       multiple_selection, selection_folder)
+                                                       multiple_selection, selection_folder,
+                                                       allow_file_selection, 
+                                                       allow_folder_selection)
         self.add_field('fileFolderNavigator',self.fileFolderNavigator)
         self.EVENT_ONCONFIRMVALUE = 'confirm_value'
         self.set_on_confirm_dialog_listener(self, 'confirm_value')
