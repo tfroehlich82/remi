@@ -97,7 +97,7 @@ class Project(gui.Widget):
         clsmembers = inspect.getmembers(_module, inspect.isclass)
         for (name, value) in clsmembers:
             if issubclass(value,App) and name!='App':
-                return value.construct_ui()
+                return value.construct_ui(self)
         return None                                           
             
     def check_pending_listeners(self, widget, widgetVarName, force=False):
@@ -106,7 +106,7 @@ class Project(gui.Widget):
         for event in self.pending_listener_registration:
             #print("widget: %s   source:%s    listener:%s"%(str(id(widget)),event['eventsource'].path_to_this_widget,event['eventlistener'].path_to_this_widget))
             if force or (hasattr(event['eventsource'],'path_to_this_widget') and hasattr(event['eventlistener'],'path_to_this_widget')):
-                if (force or (str(id(widget)) in event['eventsource'].path_to_this_widget and str(id(widget)) in event['eventlistener'].path_to_this_widget)) and event['done']==False:
+                if (force or (widget.attributes['editor_varname'] in event['eventsource'].path_to_this_widget and widget.attributes['editor_varname'] in event['eventlistener'].path_to_this_widget)) and event['done']==False:
                     #this means that this is the root node from where the leafs(listener and source) departs, hre can be set the listener
                     if not event['eventsource'] in self.known_project_children or not event['eventlistener'] in self.known_project_children:
                         continue
@@ -120,9 +120,24 @@ class Project(gui.Widget):
                             listener_filtered_path.remove(v)
                     event['eventsource'].path_to_this_widget = source_filtered_path
                     event['eventlistener'].path_to_this_widget = listener_filtered_path
-                    
-                    sourcename = "self.children['" + "'].children['".join(source_filtered_path) + "']"
+
+                    sourcename = widgetVarName
+                    if len(source_filtered_path)>0:
+                        sourcename = "self.children['" + "'].children['".join(source_filtered_path) + "']"
+                    if force==True:
+                        if self.children['root'].attributes['editor_varname'] in source_filtered_path:
+                            source_filtered_path.remove(self.children['root'].attributes['editor_varname'])
+                        sourcename = self.children['root'].attributes['editor_varname']
+                        if len(source_filtered_path)>0:
+                            sourcename = ("%s.children['" + "'].children['".join(source_filtered_path) + "']")%self.children['root'].attributes['editor_varname']
+
                     listenername = "self.children['" + "'].children['".join(listener_filtered_path) + "']"
+                    if force==True:
+                        if self.children['root'].attributes['editor_varname'] in listener_filtered_path:
+                            listener_filtered_path.remove(self.children['root'].attributes['editor_varname'])
+                        listenername = self.children['root'].attributes['editor_varname']
+                        if len(listener_filtered_path)>0:
+                            listenername = ("%s.children['" + "'].children['".join(listener_filtered_path) + "']")%self.children['root'].attributes['editor_varname']
                     if event['eventlistener'] == widget:
                         listenername = widgetVarName
                     code_nested_listener += prototypes.proto_set_listener%{'sourcename':sourcename, 
@@ -137,9 +152,9 @@ class Project(gui.Widget):
     def repr_widget_for_editor(self, widget): #widgetVarName is the name with which the parent calls this instance
         self.known_project_children.append(widget)
         if hasattr(widget, 'path_to_this_widget'):
-            widget.path_to_this_widget.append( str(id(widget)) )
+            widget.path_to_this_widget.append( widget.attributes['editor_varname'] )
         else:
-            widget.path_to_this_widget = [str(id(widget)),]
+            widget.path_to_this_widget = [widget.attributes['editor_varname'],]
         
         print(widget.attributes['editor_varname'])
         
@@ -189,7 +204,7 @@ class Project(gui.Widget):
                 continue
             child.path_to_this_widget = widget.path_to_this_widget[:]
             children_code_nested += self.repr_widget_for_editor(child)
-            children_code_nested += prototypes.proto_layout_append%{'parentname':widgetVarName,'varname':"%s,'%s'"%(child.attributes['editor_varname'],str(id(child)))}
+            children_code_nested += prototypes.proto_layout_append%{'parentname':widgetVarName,'varname':"%s,'%s'"%(child.attributes['editor_varname'],child.attributes['editor_varname'])}
         
         children_code_nested += self.check_pending_listeners(widget, widgetVarName)        
                         
@@ -359,19 +374,11 @@ class Editor(App):
         self.subContainer.append(self.project)
         self.subContainer.append(self.attributeEditor)
         
-        self.tabindex = 0 #incremental number to allow widgets selection
-        
-        self.selectedWidget = self.project
-        
         self.resizeHelper = ResizeHelper(width=16, height=16)
-        
-        self.project.new()
+        self.menu_new_clicked()
         
         self.projectPathFilename = ''
         self.editCuttedWidget = None #cut operation, contains the cutted tag
-        
-        self.widgetList = list() #list of listeners for the signalConnectionManager
-        self.widgetList.append(self.project)
         
         # returning the root widget
         return self.mainContainer
@@ -416,7 +423,6 @@ class Editor(App):
         self.tabindex += 1
         
     def add_widget_to_editor(self, widget, parent = None, root_tree_node = True):
-        self.widgetList.append(widget)
         if parent == None:
             parent = self.selectedWidget
         self.configure_widget_for_editing(widget)
@@ -434,14 +440,20 @@ class Editor(App):
         self.remove_box_shadow_selected_widget()
         self.selectedWidget = widget
         self.selectedWidget.style['box-shadow'] = '0 0 10px rgba(255, 120, 0, 1)'
-        self.signalConnectionManager.update(self.selectedWidget, self.widgetList)
+        self.signalConnectionManager.update(self.selectedWidget, self.project)
         self.attributeEditor.set_widget( self.selectedWidget )
         parent = remi.server.get_method_by(self.mainContainer, self.selectedWidget.attributes['parent_widget'])
         self.resizeHelper.setup(widget,parent)
         print("selected widget: " + str(id(widget)))
         
     def menu_new_clicked(self):
+        print('new project')
         self.project.new()
+        self.tabindex = 0 #incremental number to allow widgets selection
+        self.selectedWidget = self.project
+        self.resizeHelper.setup(None, None)
+        if 'root' in self.project.children.keys():
+            self.project.remove_child( self.project.children['root'] )
 
     def on_open_dialog_confirm(self, filelist):
         if len(filelist):
@@ -478,14 +490,12 @@ class Editor(App):
         self.resizeHelper.setup(None, None)
         parent = remi.server.get_method_by(self.mainContainer, self.selectedWidget.attributes['parent_widget'])
         self.editCuttedWidget = self.selectedWidget
-        self.widgetList.remove(editCuttedWidget)
         parent.remove_child(self.selectedWidget)
         self.selectedWidget = parent
         print("tag cutted:" + str(id(self.editCuttedWidget)))
 
     def menu_paste_selection_clicked(self):
         if self.editCuttedWidget != None:
-            self.widgetList.append(self.editCuttedWidget)
             self.selectedWidget.append(self.editCuttedWidget)
             self.editCuttedWidget = None
 
@@ -497,7 +507,6 @@ class Editor(App):
             return
         self.resizeHelper.setup(None, None)
         parent = remi.server.get_method_by(self.mainContainer, self.selectedWidget.attributes['parent_widget'])
-        self.widgetList.remove(self.selectedWidget)
         parent.remove_child(self.selectedWidget)
         self.selectedWidget = parent
         print("tag deleted")

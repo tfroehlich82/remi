@@ -71,6 +71,7 @@ class SignalConnection(gui.Widget):
             del self.refWidget.eventManager.listeners[self.eventConnectionFunc._event_listener['eventName']]
             return
         listener = self.dropdown.selected_item.listenerInstance
+        listener.attributes['editor_newclass'] = "True"
         print("signal connection to:" + listener.attributes['editor_varname'] + "   from:" + self.refWidget.attributes['editor_varname'])
         listener.fakeListenerFunc = self.fakeListenerFunc
         getattr(self.refWidget, self.eventConnectionFuncName)(listener, "fakeListenerFunc")
@@ -84,12 +85,25 @@ class SignalConnectionManager(gui.Widget):
         self.append(self.label)
         self.container = gui.VBox(width='100%')
         self.container.style['overflow-y'] = 'scroll'
-        
-    def update(self, widget, listenersList):
+        self.listeners_list = []
+
+    def build_widget_list_from_tree(self, node):
+        if not hasattr(node, 'attributes'):
+            return
+        if not 'editor_varname' in node.attributes.keys():
+            return
+        self.listeners_list.append(node)
+        for child in node.children.values():
+            self.build_widget_list_from_tree(child)
+
+    def update(self, widget, widget_tree):
         """ for the selected widget are listed the relative signals
             for each signal there is a dropdown containing all the widgets
             the user will select the widget that have to listen a specific event
         """
+        self.listeners_list = []
+        self.build_widget_list_from_tree(widget_tree)
+
         self.label.set_text('Signal connections:' + widget.attributes['editor_varname'])
         del self.container
         self.container = gui.VBox(width='100%')
@@ -105,7 +119,7 @@ class SignalConnectionManager(gui.Widget):
                 #listener = widget.eventManager.listeners[registered_event_name]['instance']
                 #listenerFunctionName = setOnEventListenerFunc._event_listener['eventName'] + "_" + widget.attributes['editor_varname']
                 #self.container.append(gui.Label(setOnEventListenerFuncname),setOnEventListenerFuncname)#setOnEventListenerFunc._event_listener['eventName']))
-                self.container.append( SignalConnection(widget, listenersList, setOnEventListenerFuncname, setOnEventListenerFunc, width='100%') )
+                self.container.append( SignalConnection(widget, self.listeners_list, setOnEventListenerFuncname, setOnEventListenerFunc, width='100%') )
 
 
 class ProjectConfigurationDialog(gui.GenericDialog):
@@ -205,8 +219,23 @@ class WidgetHelper(gui.ListItem):
 
     def __init__(self, widgetClass):
         self.widgetClass = widgetClass
-        super(WidgetHelper, self).__init__(self.widgetClass.__name__)
-            
+        super(WidgetHelper, self).__init__('')
+        self.style['display'] = 'block'
+        self.style['margin'] = '5px auto'
+        self.container = gui.HBox(width='100%', height=40)
+        self.container.set_layout_orientation(gui.Widget.LAYOUT_HORIZONTAL)
+        self.container.style['background-color'] = 'transparent'
+        self.container.style['justify-content'] = 'flex-start'
+        self.container.style['-webkit-justify-content'] = 'flex-start'
+        self.icon = gui.Image('/res/widget_%s.png'%self.widgetClass.__name__, width=120, height=40)
+        self.icon.style['margin'] = '2px'
+        self.label = gui.Label(self.widgetClass.__name__)
+        self.label.style['margin'] = ''
+        self.label.style['align-self'] = 'center'
+        self.container.append(self.icon)
+        self.container.append(self.label)
+        self.append(self.container)
+
     def prompt_new_widget(self, appInstance):
         self.appInstance = appInstance
         self.constructor_parameters_list = self.widgetClass.__init__.__code__.co_varnames[1:] #[1:] removes the self
@@ -325,7 +354,7 @@ class EditorAttributesGroup(gui.Widget):
     def __init__(self, title, **kwargs):
         super(EditorAttributesGroup, self).__init__(**kwargs)
         self.style['display'] = 'block'
-        self.style['overflow'] = 'auto'
+        self.style['overflow'] = 'visible'
         self.opened = True
         self.title = gui.Label(title)
         self.title.style['padding-left'] = '32px'
@@ -347,18 +376,24 @@ class EditorAttributesGroup(gui.Widget):
                 widget.style['display'] = display
         
         
-class EditorAttributes(gui.Widget):
+class EditorAttributes(gui.VBox):
     """ Contains EditorAttributeInput each one of which notify a new value with an event
     """
     def __init__(self, appInstance, **kwargs):
         super(EditorAttributes, self).__init__(**kwargs)
         self.EVENT_ATTRIB_ONCHANGE = 'on_attribute_changed'
         self.style['overflow-y'] = 'scroll'
-        
+        self.style['justify-content'] = 'flex-start'
+        self.style['-webkit-justify-content'] = 'flex-start'
         self.titleLabel = gui.Label('Attributes editor')
         self.infoLabel = gui.Label('Selected widget: None')
         self.append(self.titleLabel)
         self.append(self.infoLabel)
+
+        self.titleLabel.style['order'] = '-1'
+        self.titleLabel.style['-webkit-order'] = '-1'
+        self.infoLabel.style['order'] = '0'
+        self.infoLabel.style['-webkit-order'] = '0'
         
         self.attributesInputs = list()
         #load editable attributes
@@ -369,9 +404,12 @@ class EditorAttributes(gui.Widget):
             attributeEditor.set_on_attribute_change_listener(self,"onattribute_changed")
             #attributeEditor.style['display'] = 'none'
             if not html_helper.editorAttributeDictionary[attributeName]['group'] in self.attributeGroups.keys():
-                groupContainer = EditorAttributesGroup(html_helper.editorAttributeDictionary[attributeName]['group'])
+                groupContainer = EditorAttributesGroup(html_helper.editorAttributeDictionary[attributeName]['group'], width='100%')
                 self.attributeGroups[html_helper.editorAttributeDictionary[attributeName]['group']] = groupContainer
                 self.append(groupContainer)
+                groupContainer.style['order'] = str(html_helper.editorAttributesGroupOrdering[html_helper.editorAttributeDictionary[attributeName]['group']])
+                groupContainer.style['-webkit-order'] = str(html_helper.editorAttributesGroupOrdering[html_helper.editorAttributeDictionary[attributeName]['group']])
+
             self.attributeGroups[html_helper.editorAttributeDictionary[attributeName]['group']].append(attributeEditor)
             self.attributesInputs.append(attributeEditor)
     
@@ -446,9 +484,10 @@ class EditorAttributeInput(gui.Widget):
         self.attributeDict = attributeDict
         self.EVENT_ATTRIB_ONCHANGE = 'on_attribute_changed'
         
-        label = gui.Label(attributeName, width='50%', height=30)
+        label = gui.Label(attributeName, width='50%', height=22)
         label.style['margin'] = '0px'
         label.style['overflow'] = 'hidden'
+        label.style['font-size'] = '13px'
         self.append(label)
         self.inputWidget = None
 
@@ -470,7 +509,7 @@ class EditorAttributeInput(gui.Widget):
         else: #default editor is string
             self.inputWidget = gui.TextInput()
  
-        self.inputWidget.set_size('50%','30px')
+        self.inputWidget.set_size('50%','22px')
         self.inputWidget.attributes['title'] = attributeDict['description']
         label.attributes['title'] = attributeDict['description']
         self.inputWidget.set_on_change_listener(self,"on_attribute_changed")
