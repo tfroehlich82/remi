@@ -131,7 +131,9 @@ class Project(gui.Widget):
                         if len(source_filtered_path)>0:
                             sourcename = ("%s.children['" + "'].children['".join(source_filtered_path) + "']")%self.children['root'].attributes['editor_varname']
 
-                    listenername = "self.children['" + "'].children['".join(listener_filtered_path) + "']"
+                    listenername = "self"
+                    if len(listener_filtered_path)>0:
+                        listenername = "self.children['" + "'].children['".join(listener_filtered_path) + "']"
                     if force==True:
                         if self.children['root'].attributes['editor_varname'] in listener_filtered_path:
                             listener_filtered_path.remove(self.children['root'].attributes['editor_varname'])
@@ -306,7 +308,7 @@ class Editor(App):
         menu.append(m3)
         
         self.toolbar = editor_widgets.ToolBar(width='100%', height='5%')
-        self.toolbar.style['margin'] = '0px 20%'
+        self.toolbar.style['margin'] = '0px 0px'
         self.toolbar.add_command('/res/delete.png', self, 'toolbar_delete_clicked', 'Delete Widget')
         self.toolbar.add_command('/res/cut.png', self, 'menu_cut_selection_clicked', 'Cut Widget')
         self.toolbar.add_command('/res/paste.png', self, 'menu_paste_selection_clicked', 'Paste Widget')
@@ -327,17 +329,19 @@ class Editor(App):
         
         m3.set_on_click_listener(self, 'menu_project_config_clicked')
         
-        self.subContainer = gui.Widget(width='100%', height='90%')
-        self.subContainer.style['display']='block'
+        self.subContainer = gui.HBox(width='100%', height='90%')
+        #self.subContainer.style['display']='block'
         self.subContainer.set_layout_orientation(gui.Widget.LAYOUT_HORIZONTAL)
-        self.subContainer.style['background-color'] = 'transparent'
+        #self.subContainer.style['background-color'] = 'transparent'
         self.subContainer.style['position'] = 'relative'
         self.subContainer.style['overflow']='auto'
+        self.subContainer.style['align-items']='stretch'
                 
         #here are contained the widgets
         self.widgetsCollection = editor_widgets.WidgetCollection(self, width='100%', height='50%')
         
         self.project = Project(width='56%', height='100%')
+        
         self.project.attributes['ondragover'] = "event.preventDefault();"
         self.EVENT_ONDROPPPED = "on_dropped"
         self.project.attributes['ondrop'] = """event.preventDefault();
@@ -351,6 +355,14 @@ class Editor(App):
                 
                 return false;""" % {'evt':self.EVENT_ONDROPPPED}
         self.project.attributes['editor_varname'] = 'App'
+        self.project.attributes[self.project.EVENT_ONKEYDOWN] = """
+                var params={};
+                params['keypressed']=event.keyCode;
+                sendCallbackParam('%(id)s','%(evt)s',params);
+                if(event.keyCode==46){
+                    return false;
+                }
+            """ % {'id':id(self), 'evt':self.project.EVENT_ONKEYDOWN}
         
         self.projectConfiguration = editor_widgets.ProjectConfigurationDialog('Project Configuration', 'Write here the configuration for your project.')
         
@@ -373,6 +385,7 @@ class Editor(App):
         self.subContainer.append(self.subContainerLeft)
         self.subContainer.append(self.project)
         self.subContainer.append(self.attributeEditor)
+        self.project.style['position'] = 'relative'
         
         self.resizeHelper = ResizeHelper(width=16, height=16)
         self.menu_new_clicked()
@@ -389,7 +402,7 @@ class Editor(App):
             It informs here that it is clicked by the user and the EditorApp starts the allocation
             sending its instance in order to show a dialog 
         """ 
-        helperInstance.prompt_new_widget(self)
+        helperInstance.prompt_new_widget(self, self.project)
     
     def configure_widget_for_editing(self, widget):
         """ A widget have to be added to the editor, it is configured here in order to be conformant 
@@ -510,7 +523,13 @@ class Editor(App):
         parent.remove_child(self.selectedWidget)
         self.selectedWidget = parent
         print("tag deleted")
+        
+    def onkeydown(self, keypressed):
+        if keypressed==46: #46 the delete keycode
+            self.toolbar_delete_clicked()
+        print("Key pressed: " + str(keypressed))
 
+        
 #function overload for widgets that have to be editable
 #the normal onfocus function does not returns the widget instance
 #def onfocus_with_instance(self):

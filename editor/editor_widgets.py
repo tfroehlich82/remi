@@ -15,6 +15,7 @@
 import remi.gui as gui
 import html_helper
 import inspect
+import re
 
 
 class ToolBar(gui.Widget):
@@ -72,7 +73,7 @@ class SignalConnection(gui.Widget):
             return
         listener = self.dropdown.selected_item.listenerInstance
         listener.attributes['editor_newclass'] = "True"
-        print("signal connection to:" + listener.attributes['editor_varname'] + "   from:" + self.refWidget.attributes['editor_varname'])
+        print("signal connection to: " + listener.attributes['editor_varname'] + "   from:" + self.refWidget.attributes['editor_varname'])
         listener.fakeListenerFunc = self.fakeListenerFunc
         getattr(self.refWidget, self.eventConnectionFuncName)(listener, "fakeListenerFunc")
 
@@ -104,7 +105,7 @@ class SignalConnectionManager(gui.Widget):
         self.listeners_list = []
         self.build_widget_list_from_tree(widget_tree)
 
-        self.label.set_text('Signal connections:' + widget.attributes['editor_varname'])
+        self.label.set_text('Signal connections: ' + widget.attributes['editor_varname'])
         del self.container
         self.container = gui.VBox(width='100%')
         self.container.style['overflow-y'] = 'scroll'
@@ -194,12 +195,16 @@ class EditorFileSaveDialog(gui.FileSelectionDialog):
         
     def add_fileinput_field(self, defaultname='untitled'):
         self.txtFilename = gui.TextInput()
+        self.txtFilename.set_on_enter_listener(self, 'on_enter_key_pressed')
         self.txtFilename.set_text(defaultname)
         
         self.add_field_with_label("filename","Filename",self.txtFilename)
         
     def get_fileinput_value(self):
         return self.get_field('filename').get_value()
+    
+    def on_enter_key_pressed(self, value):
+        self.confirm_value()
         
     def confirm_value(self):
         """event called pressing on OK button.
@@ -217,7 +222,8 @@ class WidgetHelper(gui.ListItem):
         puts the values in an attribute called constructor
     """
 
-    def __init__(self, widgetClass):
+    def __init__(self, widgetClass, **kwargs_to_widget):
+        self.kwargs_to_widget = kwargs_to_widget
         self.widgetClass = widgetClass
         super(WidgetHelper, self).__init__('')
         self.style['display'] = 'block'
@@ -236,7 +242,20 @@ class WidgetHelper(gui.ListItem):
         self.container.append(self.label)
         self.append(self.container)
 
-    def prompt_new_widget(self, appInstance):
+    def build_widget_name_list_from_tree(self, node):
+        if not hasattr(node, 'attributes'):
+            return
+        if not 'editor_varname' in node.attributes.keys():
+            return
+        self.varname_list.append(node.attributes['editor_varname'])
+        for child in node.children.values():
+            self.build_widget_name_list_from_tree(child)
+        
+    def prompt_new_widget(self, appInstance, widgets_tree):
+        self.varname_list = list()
+        
+        self.build_widget_name_list_from_tree(widgets_tree)
+        
         self.appInstance = appInstance
         self.constructor_parameters_list = self.widgetClass.__init__.__code__.co_varnames[1:] #[1:] removes the self
         param_annotation_dict = ''#self.widgetClass.__init__.__annotations__
@@ -268,6 +287,17 @@ class WidgetHelper(gui.ListItem):
     def on_dialog_confirm(self):
         """ Here the widget is allocated
         """
+        variableName = str(self.dialog.get_field("name").get_value())
+        if re.match('(^[a-zA-Z][a-zA-Z0-9_]*)|(^[_][a-zA-Z0-9_]+)', variableName) == None:
+            self.errorDialog = gui.GenericDialog("Error", "Please type a valid variable name.", width=350,height=120)
+            self.errorDialog.show(self.appInstance)
+            return
+        
+        if variableName in self.varname_list:
+            self.errorDialog = gui.GenericDialog("Error", "The typed variable name is already used. Please specify a new name.", width=350,height=150)
+            self.errorDialog.show(self.appInstance)
+            return
+        
         param_annotation_dict = ''#self.widgetClass.__init__.__annotations__
         param_values = []
         param_for_constructor = []
@@ -288,9 +318,9 @@ class WidgetHelper(gui.ListItem):
         #constructor = '%s(%s)'%(self.widgetClass.__name__, ','.join(map(lambda v: str(v), param_values)))
         constructor = '(%s)'%(','.join(map(lambda v: str(v), param_for_constructor)))
         #here we create and decorate the widget
-        widget = self.widgetClass(*param_values)
+        widget = self.widgetClass(*param_values, **self.kwargs_to_widget)
         widget.attributes['editor_constructor'] = constructor
-        widget.attributes['editor_varname'] = self.dialog.get_field('name').get_value()
+        widget.attributes['editor_varname'] = variableName
         widget.attributes['editor_tag_type'] = 'widget'
         widget.attributes['editor_newclass'] = 'True' if self.dialog.get_field("editor_newclass").get_value() else 'False'
         widget.attributes['editor_baseclass'] = widget.__class__.__name__ #__class__.__bases__[0].__name__
@@ -299,7 +329,6 @@ class WidgetHelper(gui.ListItem):
             widget.style['position'] = 'absolute'
         if not 'display' in widget.style:
             widget.style['display'] = 'block'
-        widget.set_size(100,100)
         self.appInstance.add_widget_to_editor(widget)
 
 
@@ -317,30 +346,30 @@ class WidgetCollection(gui.Widget):
         self.append(self.listWidgets)
         
         #load all widgets
-        self.add_widget_to_collection(gui.HBox)
-        self.add_widget_to_collection(gui.VBox)
-        self.add_widget_to_collection(gui.Widget)
-        self.add_widget_to_collection(gui.Button)
-        self.add_widget_to_collection(gui.TextInput)
-        self.add_widget_to_collection(gui.Label)
-        self.add_widget_to_collection(gui.ListView)
-        self.add_widget_to_collection(gui.ListItem)
-        self.add_widget_to_collection(gui.DropDown)
-        self.add_widget_to_collection(gui.DropDownItem)
-        self.add_widget_to_collection(gui.Image)
-        self.add_widget_to_collection(gui.CheckBoxLabel)
-        self.add_widget_to_collection(gui.CheckBox)
-        self.add_widget_to_collection(gui.SpinBox)
-        self.add_widget_to_collection(gui.Slider)
-        self.add_widget_to_collection(gui.ColorPicker)
-        self.add_widget_to_collection(gui.Date)
-        self.add_widget_to_collection(gui.Link)
-        self.add_widget_to_collection(gui.VideoPlayer)
+        self.add_widget_to_collection(gui.HBox, width='250px', height='250px')
+        self.add_widget_to_collection(gui.VBox, width='250px', height='250px')
+        self.add_widget_to_collection(gui.Widget, width='250px', height='250px')
+        self.add_widget_to_collection(gui.Button, width='100px', height='30px')
+        self.add_widget_to_collection(gui.TextInput, width='100px', height='30px')
+        self.add_widget_to_collection(gui.Label, width='100px', height='30px')
+        self.add_widget_to_collection(gui.ListView, width='100px', height='30px')
+        self.add_widget_to_collection(gui.ListItem, width='100px', height='30px')
+        self.add_widget_to_collection(gui.DropDown, width='100px', height='30px')
+        self.add_widget_to_collection(gui.DropDownItem, width='100px', height='30px')
+        self.add_widget_to_collection(gui.Image, width='100px', height='100px')
+        self.add_widget_to_collection(gui.CheckBoxLabel, width='100px', height='30px')
+        self.add_widget_to_collection(gui.CheckBox, width='30px', height='30px')
+        self.add_widget_to_collection(gui.SpinBox, width='100px', height='30px')
+        self.add_widget_to_collection(gui.Slider, width='100px', height='30px')
+        self.add_widget_to_collection(gui.ColorPicker, width='100px', height='30px')
+        self.add_widget_to_collection(gui.Date, width='100px', height='30px')
+        self.add_widget_to_collection(gui.Link, width='100px', height='30px')
+        self.add_widget_to_collection(gui.VideoPlayer, width='100px', height='100px')
         
-    def add_widget_to_collection(self, widgetClass):
+    def add_widget_to_collection(self, widgetClass, **kwargs_to_widget):
         #create an helper that will be created on click
         #the helper have to search for function that have 'return' annotation 'event_listener_setter'
-        helper = WidgetHelper(widgetClass)
+        helper = WidgetHelper(widgetClass, **kwargs_to_widget)
         helper.attributes['title'] = widgetClass.__doc__
         helper.style['width'] = '100%'
         self.listWidgets.append( helper )
