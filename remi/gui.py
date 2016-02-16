@@ -91,6 +91,11 @@ class EventManager(object):
 
 
 class Tag(object):
+    """
+    Tag is the base class of the framework. It represents an element that can be added to the GUI,
+    but it is not necessarily graphically representable.
+    You can use this class for sending javascript code to the clients.
+    """
     def __init__(self, **kwargs):
         self.kwargs = kwargs
         # the runtime instances are processed every time a requests arrives, searching for the called method
@@ -108,7 +113,7 @@ class Tag(object):
         self.attributes['class'] = self.__class__.__name__
 
     def repr(self, client, include_children=True):
-        """it is used to automatically represent the object to HTML format
+        """It is used to automatically represent the object to HTML format
         packs all the attributes, children and so on.
 
         Parameters
@@ -191,15 +196,22 @@ class Tag(object):
 
 
 class Widget(Tag):
-    """base class for gui widgets.
+    """Base class for gui widgets.
 
+    Widget can be used as generic container. You can add children by the append(value, key) function.
+    Widget can be arranged in absolute positioning (assigning style['top'] and style['left'] attributes to the children
+    or in a simple auto-alignment.
+    You can decide the horizontal or vertical arrangement by the function set_layout_horientation(layout_orientation)
+    passing as parameter Widget.LAYOUT_HORIZONTAL or Widget.LAYOUT_VERTICAL.
+
+    Tips:
     In html, it is a DIV tag    
-    the self.type attribute specifies the HTML tag representation    
-    the self.attributes[] attribute specifies the HTML attributes like 'style' 'class' 'id' 
-    the self.style[] attribute specifies the CSS style content like 'font' 'color'. 
-    It will be packet together with 'self.attributes'
-
+    The self.type attribute specifies the HTML tag representation
+    The self.attributes[] attribute specifies the HTML attributes like 'style' 'class' 'id'
+    The self.style[] attribute specifies the CSS style content like 'font' 'color'. It will be packed together with
+    'self.attributes'.
     """
+
     # constants
     LAYOUT_HORIZONTAL = True
     LAYOUT_VERTICAL = False
@@ -253,19 +265,43 @@ class Widget(Tag):
         self.set_size(kwargs.get('width'), kwargs.get('height'))
 
     def set_size(self, width, height):
-        if type(width) == int:
-            width = to_pix(width)
-        if type(height) == int:
-            height = to_pix(height)
-        if width is not None:
+        """Set the widget size.
+        Parameters
+        ----------
+        width (int|str): the value can be of type integer or string. Where not explicitly defined the size unit will be
+                        considered as 'pixel'.
+                        (es. width=10 or width='10px' or width='10%').
+        height (int|str): the value can be of type integer or string. Where not explicitly defined the size unit will be
+                        considered as 'pixel'.
+                        (es. height=10 or height='10px' or height='10%').
+        """
+        if width!=None:
+            try:
+                width = to_pix( int( width ) )
+            except ValueError:
+                # now we know w has 'px or % in it'
+                pass
             self.style['width'] = width
-        if height is not None:
+
+        if height!=None:
+            try:
+                height = to_pix( int(height) )
+            except ValueError:
+                # now we know w has 'px or % in it'
+                pass
             self.style['height'] = height
 
     def set_layout_orientation(self, layout_orientation):
+        """For the generic Widget, this function allows to setup the children arrangement.
+        Parameters
+        ----------
+        layout_orientation (Widget.LAYOUT_HORIZONTAL|Widget.LAYOUT_VERTICAL):
+        """
         self.layout_orientation = layout_orientation
 
     def redraw(self):
+        """Allows to force the graphic update of the widget
+        """
         update_event.set()
 
     def repr(self, client, include_children=True):
@@ -306,10 +342,19 @@ class Widget(Tag):
         return key
 
     def onfocus(self):
+        """Called when the Widget gets the focus.
+        """
         return self.eventManager.propagate(self.EVENT_ONFOCUS, [])
 
     @decorate_set_on_listener("onfocus", "(self)")
     def set_on_focus_listener(self, listener, funcname):
+        """Registers the listener for the Widget.onfocus event.
+
+        Parameters
+        ----------
+        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        funcname (str): Literal name of the listener function, member of the listener instance
+        """
         self.attributes[self.EVENT_ONFOCUS] = \
             "sendCallback('%s','%s');" \
             "event.stopPropagation();event.preventDefault();" \
@@ -317,10 +362,19 @@ class Widget(Tag):
         self.eventManager.register_listener(self.EVENT_ONFOCUS, listener, funcname)
 
     def onblur(self):
+        """Called when the Widget losts the focus.
+        """
         return self.eventManager.propagate(self.EVENT_ONBLUR, [])
 
     @decorate_set_on_listener("onblur", "(self)")
     def set_on_blur_listener(self, listener, funcname):
+        """Registers the listener for the Widget.onblur event.
+
+        Parameters
+        ----------
+        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        funcname (str): Literal name of the listener function, member of the listener instance
+        """
         self.attributes[self.EVENT_ONBLUR] = \
             "sendCallback('%s','%s');" \
             "event.stopPropagation();event.preventDefault();" \
@@ -341,25 +395,43 @@ class Widget(Tag):
         self.baseAppInstance.client.root = self
 
     def hide(self):
-        """The root window is restored after a show"""
+        """Hide the widget. The root window is shown."""
         if hasattr(self, 'baseAppInstance'):
             self.baseAppInstance.client.root = self.oldRootWidget
 
     def onclick(self):
+        """Called when the Widget gets clicked by the user with the left mouse button.
+        """
         return self.eventManager.propagate(self.EVENT_ONCLICK, [])
 
     @decorate_set_on_listener("onclick", "(self)")
     def set_on_click_listener(self, listener, funcname):
+        """Registers the listener for the Widget.onclick event.
+
+        Parameters
+        ----------
+        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        funcname (str): Literal name of the listener function, member of the listener instance
+        """
         self.attributes[self.EVENT_ONCLICK] = \
             "sendCallback('%s','%s');" \
             "event.stopPropagation();event.preventDefault();" % (id(self), self.EVENT_ONCLICK)
         self.eventManager.register_listener(self.EVENT_ONCLICK, listener, funcname)
 
     def oncontextmenu(self):
+        """Called when the Widget gets clicked by the user with the right mouse button.
+        """
         return self.eventManager.propagate(self.EVENT_ONCONTEXTMENU, [])
 
     @decorate_set_on_listener("oncontextmenu", "(self)")
     def set_on_contextmenu_listener(self, listener, funcname):
+        """Registers the listener for the Widget.oncontextmenu event.
+
+        Parameters
+        ----------
+        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        funcname (str): Literal name of the listener function, member of the listener instance
+        """
         self.attributes[self.EVENT_ONCONTEXTMENU] = \
             "sendCallback('%s','%s');" \
             "event.stopPropagation();event.preventDefault();" \
@@ -367,10 +439,19 @@ class Widget(Tag):
         self.eventManager.register_listener(self.EVENT_ONCONTEXTMENU, listener, funcname)
 
     def onmousedown(self, x, y):
+        """Called when the user presses left or right mouse button over a Widget.
+        """
         return self.eventManager.propagate(self.EVENT_ONMOUSEDOWN, [x, y])
 
     @decorate_set_on_listener("onmousedown", "(self,x,y)")
     def set_on_mousedown_listener(self, listener, funcname):
+        """Registers the listener for the Widget.onmousedown event.
+
+        Parameters
+        ----------
+        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        funcname (str): Literal name of the listener function, member of the listener instance
+        """
         self.attributes[self.EVENT_ONMOUSEDOWN] = \
             "var params={};" \
             "params['x']=event.clientX-this.offsetLeft;params['y']=event.clientY-this.offsetTop;" \
@@ -380,10 +461,19 @@ class Widget(Tag):
         self.eventManager.register_listener(self.EVENT_ONMOUSEDOWN, listener, funcname)
 
     def onmouseup(self, x, y):
+        """Called when the user releases left or right mouse button over a Widget.
+        """
         return self.eventManager.propagate(self.EVENT_ONMOUSEUP, [x, y])
 
     @decorate_set_on_listener("onmouseup", "(self,x,y)")
     def set_on_mouseup_listener(self, listener, funcname):
+        """Registers the listener for the Widget.onmouseup event.
+
+        Parameters
+        ----------
+        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        funcname (str): Literal name of the listener function, member of the listener instance
+        """
         self.attributes[self.EVENT_ONMOUSEUP] = \
             "var params={};" \
             "params['x']=event.clientX-this.offsetLeft;params['y']=event.clientY-this.offsetTop;" \
@@ -393,10 +483,21 @@ class Widget(Tag):
         self.eventManager.register_listener(self.EVENT_ONMOUSEUP, listener, funcname)
 
     def onmouseout(self):
+        """Called when the mouse cursor moves outside a Widget.
+        Note: This event is often used together with the Widget.onmouseover event, which occurs when the pointer is
+            moved onto a Widget, or onto one of its children.
+        """
         return self.eventManager.propagate(self.EVENT_ONMOUSEOUT, [])
 
     @decorate_set_on_listener("onmouseout", "(self)")
     def set_on_mouseout_listener(self, listener, funcname):
+        """Registers the listener for the Widget.onmouseout event.
+
+        Parameters
+        ----------
+        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        funcname (str): Literal name of the listener function, member of the listener instance
+        """
         self.attributes[self.EVENT_ONMOUSEOUT] = \
             "sendCallback('%s','%s');" \
             "event.stopPropagation();event.preventDefault();" \
@@ -404,10 +505,23 @@ class Widget(Tag):
         self.eventManager.register_listener(self.EVENT_ONMOUSEOUT, listener, funcname)
 
     def onmouseleave(self):
+        """Called when the mouse cursor moves outside a Widget.
+        Note: This event is often used together with the Widget.onmouseenter event, which occurs when the mouse pointer
+            is moved onto a Widget.
+        Note: The Widget.onmouseleave event is similar to the Widget.onmouseout event. The only difference is that the
+            onmouseleave event does not bubble (does not propagate up the Widgets tree).
+        """
         return self.eventManager.propagate(self.EVENT_ONMOUSELEAVE, [])
 
     @decorate_set_on_listener("onmouseleave", "(self)")
     def set_on_mouseleave_listener(self, listener, funcname):
+        """Registers the listener for the Widget.onmouseleave event.
+
+        Parameters
+        ----------
+        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        funcname (str): Literal name of the listener function, member of the listener instance
+        """
         self.attributes[self.EVENT_ONMOUSELEAVE] = \
             "sendCallback('%s','%s');" \
             "event.stopPropagation();event.preventDefault();" \
@@ -415,10 +529,24 @@ class Widget(Tag):
         self.eventManager.register_listener(self.EVENT_ONMOUSELEAVE, listener, funcname)
 
     def onmousemove(self, x, y):
+        """Called when the mouse cursor moves inside the Widget.
+
+        Parameters
+        ----------
+        x (int): position of the mouse inside the widget
+        y (int): position of the mouse inside the widget
+        """
         return self.eventManager.propagate(self.EVENT_ONMOUSEMOVE, [x, y])
 
     @decorate_set_on_listener("onmousemove", "(self,x,y)")
     def set_on_mousemove_listener(self, listener, funcname):
+        """Registers the listener for the Widget.onmousemove event.
+        Note: the listener prototype have to be in the form on_widget_mousemove(self, x, y)
+        Parameters
+        ----------
+        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        funcname (str): Literal name of the listener function, member of the listener instance
+        """
         self.attributes[self.EVENT_ONMOUSEMOVE] = \
             "var params={};" \
             "params['x']=event.clientX-this.offsetLeft;params['y']=event.clientY-this.offsetTop;" \
@@ -428,10 +556,25 @@ class Widget(Tag):
         self.eventManager.register_listener(self.EVENT_ONMOUSEMOVE, listener, funcname)
 
     def ontouchmove(self, x, y):
+        """Called continuously while a finger is dragged across the screen, over a Widget.
+
+        Parameters
+        ----------
+        x (int): position of the finger inside the widget
+        y (int): position of the finger inside the widget
+        """
         return self.eventManager.propagate(self.EVENT_ONTOUCHMOVE, [x, y])
 
     @decorate_set_on_listener("ontouchmove", "(self,x,y)")
     def set_on_touchmove_listener(self, listener, funcname):
+        """Registers the listener for the Widget.ontouchmove event.
+        Note: the listener prototype have to be in the form on_widget_touchmove(self, x, y)
+
+        Parameters
+        ----------
+        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        funcname (str): Literal name of the listener function, member of the listener instance
+        """
         self.attributes[self.EVENT_ONTOUCHMOVE] = \
             "var params={};" \
             "params['x']=parseInt(event.changedTouches[0].clientX)-this.offsetLeft;" \
@@ -442,10 +585,25 @@ class Widget(Tag):
         self.eventManager.register_listener(self.EVENT_ONTOUCHMOVE, listener, funcname)
 
     def ontouchstart(self, x, y):
+        """Called when a finger touches the widget.
+
+        Parameters
+        ----------
+        x (int): position of the finger inside the widget
+        y (int): position of the finger inside the widget
+        """
         return self.eventManager.propagate(self.EVENT_ONTOUCHSTART, [x, y])
 
     @decorate_set_on_listener("ontouchstart", "(self,x,y)")
     def set_on_touchstart_listener(self, listener, funcname):
+        """Registers the listener for the Widget.ontouchstart event.
+        Note: the listener prototype have to be in the form on_widget_touchstart(self, x, y)
+
+        Parameters
+        ----------
+        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        funcname (str): Literal name of the listener function, member of the listener instance
+        """
         self.attributes[self.EVENT_ONTOUCHSTART] = \
             "var params={};" \
             "params['x']=parseInt(event.changedTouches[0].clientX)-this.offsetLeft;" \
@@ -456,10 +614,25 @@ class Widget(Tag):
         self.eventManager.register_listener(self.EVENT_ONTOUCHSTART, listener, funcname)
 
     def ontouchend(self, x, y):
+        """Called when a finger is released from the widget.
+
+        Parameters
+        ----------
+        x (int): position of the finger inside the widget
+        y (int): position of the finger inside the widget
+        """
         return self.eventManager.propagate(self.EVENT_ONTOUCHEND, [x, y])
 
     @decorate_set_on_listener("ontouchend", "(self,x,y)")
     def set_on_touchend_listener(self, listener, funcname):
+        """Registers the listener for the Widget.ontouchend event.
+        Note: the listener prototype have to be in the form on_widget_touchend(self, x, y)
+
+        Parameters
+        ----------
+        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        funcname (str): Literal name of the listener function, member of the listener instance
+        """
         self.attributes[self.EVENT_ONTOUCHEND] = \
             "var params={};" \
             "params['x']=parseInt(event.changedTouches[0].clientX)-this.offsetLeft;" \
@@ -470,10 +643,25 @@ class Widget(Tag):
         self.eventManager.register_listener(self.EVENT_ONTOUCHEND, listener, funcname)
 
     def ontouchenter(self, x, y):
+        """Called when a finger touches from outside to inside the widget.
+
+        Parameters
+        ----------
+        x (int): position of the finger inside the widget
+        y (int): position of the finger inside the widget
+        """
         return self.eventManager.propagate(self.EVENT_ONTOUCHENTER, [x, y])
 
     @decorate_set_on_listener("ontouchenter", "(self,x,y)")
     def set_on_touchenter_listener(self, listener, funcname):
+        """Registers the listener for the Widget.ontouchenter event.
+        Note: the listener prototype have to be in the form on_widget_touchenter(self, x, y)
+
+        Parameters
+        ----------
+        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        funcname (str): Literal name of the listener function, member of the listener instance
+        """
         self.attributes[self.EVENT_ONTOUCHENTER] = \
             "var params={};" \
             "params['x']=parseInt(event.changedTouches[0].clientX)-this.offsetLeft;" \
@@ -484,10 +672,20 @@ class Widget(Tag):
         self.eventManager.register_listener(self.EVENT_ONTOUCHENTER, listener, funcname)
 
     def ontouchleave(self):
+        """Called when a finger touches from inside to outside the widget.
+        """
         return self.eventManager.propagate(self.EVENT_ONTOUCHLEAVE, [])
 
     @decorate_set_on_listener("ontouchleave", "(self)")
     def set_on_touchleave_listener(self, listener, funcname):
+        """Registers the listener for the Widget.ontouchleave event.
+        Note: the listener prototype have to be in the form on_widget_touchleave(self)
+
+        Parameters
+        ----------
+        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        funcname (str): Literal name of the listener function, member of the listener instance
+        """
         self.attributes[self.EVENT_ONTOUCHLEAVE] = \
             "sendCallback('%s','%s');" \
             "event.stopPropagation();event.preventDefault();" \
@@ -495,10 +693,21 @@ class Widget(Tag):
         self.eventManager.register_listener(self.EVENT_ONTOUCHLEAVE, listener, funcname)
 
     def ontouchcancel(self):
+        """Called when a touch point has been disrupted in an implementation-specific manner
+        (for example, too many touch points are created).
+        """
         return self.eventManager.propagate(self.EVENT_ONTOUCHCANCEL, [])
 
     @decorate_set_on_listener("ontouchcancel", "(self)")
     def set_on_touchcancel_listener(self, listener, funcname):
+        """Registers the listener for the Widget.ontouchcancel event.
+        Note: the listener prototype have to be in the form on_widget_touchcancel(self)
+
+        Parameters
+        ----------
+        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        funcname (str): Literal name of the listener function, member of the listener instance
+        """
         self.attributes[self.EVENT_ONTOUCHCANCEL] = \
             "sendCallback('%s','%s');" \
             "event.stopPropagation();event.preventDefault();" \
@@ -507,8 +716,13 @@ class Widget(Tag):
 
 
 class HBox(Widget):
-    """ It contains widget automatically aligning them vertically. 
-        Does not permit children absolute positioning
+    """It contains widget automatically aligning them horizontally.
+    Does not permit children absolute positioning.
+
+    In order to add children to this container, use the append(child, key) function.
+    The key have to be numeric and determines the children order in the layout.
+
+    Note: If you would absolute positioning, use the Widget container instead.
     """
 
     @decorate_constructor_parameter_types([])
@@ -528,7 +742,7 @@ class HBox(Widget):
     def append(self, value, key=''):
         """It allows to add child widgets to this.
         The key allows to access the specific child in this way widget.children[key].
-        The key have to be numeric and determines the child order in the layout.
+        The key have to be numeric and determines the children order in the layout.
 
         Parameters
         ----------
@@ -569,8 +783,13 @@ class HBox(Widget):
 
 
 class VBox(HBox):
-    """ It contains widget automatically aligning them vertically. 
-        Does not permit children absolute positioning
+    """It contains widget automatically aligning them vertically.
+    Does not permit children absolute positioning.
+
+    In order to add children to this container, use the append(child, key) function.
+    The key have to be numeric and determines the children order in the layout.
+
+    Note: If you would absolute positioning, use the Widget container instead.
     """
 
     @decorate_constructor_parameter_types([])
