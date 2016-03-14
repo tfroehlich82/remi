@@ -46,9 +46,10 @@ except ImportError:
     from urllib.parse import urlparse
     from urllib.parse import parse_qs
 import cgi
+import weakref
 
 clients = {}
-runtimeInstances = []
+runtimeInstances = weakref.WeakValueDictionary()
 
 pyLessThan3 = sys.version_info < (3,)
 
@@ -88,33 +89,13 @@ def get_method_by_name(rootNode, name):
     val = None
     if hasattr(rootNode, name):
         val = getattr(rootNode, name)
-    else:
-        pass
     return val
 
 
-def get_method_by_id(rootNode, _id, maxIter=5):
+def get_method_by_id(rootNode, _id):
     global runtimeInstances
-    for i in runtimeInstances:
-        if id(i) == _id:
-            return i
-
-    maxIter = maxIter - 1
-    if maxIter < 0:
-        return None
-    _id = int(_id)
-
-    if id(rootNode) == _id:
-        return rootNode
-
-    try:
-        if hasattr(rootNode, 'children'):
-            for i in rootNode.children.values():
-                val = get_method_by_id(i, _id)
-                if val is not None:
-                    return val
-    except:
-        pass
+    if str(_id) in runtimeInstances:
+        return runtimeInstances[str(_id)]
     return None
 
 
@@ -246,11 +227,10 @@ class WebSocketsHandler(socketserver.StreamRequestHandler):
 
                         param_dict = parse_parametrs(params)
 
-                        for w in runtimeInstances:
-                            if str(id(w)) == widget_id:
-                                callback = get_method_by_name(w, function_name)
-                                if callback is not None:
-                                    callback(**param_dict)
+                        callback = get_method_by_name(runtimeInstances[widget_id], 
+                                        function_name)
+                        if callback is not None:
+                            callback(**param_dict)
             except Exception as e:
                 log.error('error parsing websocket', exc_info=True)
 
@@ -282,53 +262,56 @@ def parse_parametrs(p):
                         pass
             ret[field_name] = field_value
     return ret
-
-
-def gui_update_children_copy(client, leaf):
+    
+    
+def gui_update_children_version(client, leaf):
     """ This function is called when a leaf is updated by gui_updater
         and so, children does not need graphical update, it is only
-        required to update the memory copy of the children
+        required to update the last version of the dictionaries
     """
     if not hasattr(leaf, 'attributes'):
         return False
-    __id = str(id(leaf))
-    client.old_runtime_widgets[__id] = leaf.repr(client,False)
+    
+    leaf.attributes.__lastversion__ = leaf.attributes.__version__
+    leaf.style.__lastversion__ = leaf.style.__version__
+    leaf.children.__lastversion__ = leaf.children.__version__
     
     for subleaf in leaf.children.values():
-        gui_update_children_copy(client, subleaf)
+        gui_update_children_version(client, subleaf)
     
     
 def gui_updater(client, leaf, no_update_because_new_subchild=False):
     if not hasattr(leaf, 'attributes'):
         return False
 
-    # if there is not a copy of widgets, do it
-    if not hasattr(client, 'old_runtime_widgets'):
-        client.old_runtime_widgets = dict()  # idWidget,reprWidget
+    # if the widget appears here for the first time
+    if not hasattr(leaf.attributes, '__lastversion__'):
+        leaf.attributes.__lastversion__ = leaf.attributes.__version__
+        leaf.style.__lastversion__ = leaf.style.__version__
+        leaf.children.__lastversion__ = leaf.children.__version__
 
-    __id = str(id(leaf))
-    # if the widget is not contained in the copy
-    if not (__id in client.old_runtime_widgets.keys()):
-        client.old_runtime_widgets[__id] = leaf.repr(client,False)
         if not no_update_because_new_subchild:
             no_update_because_new_subchild = True
             # we ensure that the clients have an updated version
             for ws in client.websockets:
                 try:
-                    # here a new widget is found, but it must be added updating the parent widget
-                    if 'parent_widget' in leaf.attributes.keys():
+                    # here a new widget is found, but it must be added to the client representation
+                    # updating the parent widget
+                    if 'parent_widget' in leaf.attributes:
                         parentWidgetId = leaf.attributes['parent_widget']
                         html = get_method_by_id(client.root,parentWidgetId).repr(client)
                         ws.send_message('update_widget,' + parentWidgetId + ',' + toWebsocket(html))
                     else:
-                        log.error('the new widget seems to have no parent...')
+                        log.debug('the new widget seems to have no parent...')
                     # adding new widget with insert_widget causes glitches, so is preferred to update the parent widget
                     #ws.send_message('insert_widget,' + __id + ',' + parentWidgetId + ',' + repr(leaf))
                 except:
                     client.websockets.remove(ws)
 
-    newhtml = leaf.repr(client,False)
-    if newhtml != client.old_runtime_widgets[__id]:
+    if leaf.style.__lastversion__ != leaf.style.__version__ or \
+        leaf.attributes.__lastversion__ != leaf.attributes.__version__ or \
+        leaf.children.__lastversion__ != leaf.children.__version__:
+        __id = str(id(leaf))
         for ws in client.websockets:
             log.debug('update_widget: %s type: %s' %(__id, type(leaf)))
             try:
@@ -336,18 +319,18 @@ def gui_updater(client, leaf, no_update_because_new_subchild=False):
                 ws.send_message('update_widget,' + __id + ',' + toWebsocket(html))
             except:
                 client.websockets.remove(ws)
-        #client.old_runtime_widgets[__id] = newhtml
         
-        #update children back copy in order to avoid nested updates
-        gui_update_children_copy(client, leaf)
+        #update children dictionaries __version__ in order to avoid nested updates
+        gui_update_children_version(client, leaf)
         return True
-        
+    
+    changed_or = False
     # checking if subwidgets changed
     for subleaf in leaf.children.values():
-        gui_updater(client, subleaf, no_update_because_new_subchild)
+        changed_or |= gui_updater(client, subleaf, no_update_because_new_subchild)
         
-    # widget NOT changed
-    return False
+    # propagating the children changed flag
+    return changed_or
 
 
 class _UpdateThread(threading.Thread):
@@ -365,7 +348,7 @@ class _UpdateThread(threading.Thread):
 
     def run(self):
         while True:
-            global clients
+            global clients, runtimeInstances
             global update_lock, update_event
 
             update_event.wait()
@@ -376,8 +359,6 @@ class _UpdateThread(threading.Thread):
                             continue
                         # here we check if the root window has changed
                         if not hasattr(client, 'old_root_window') or client.old_root_window != client.root:
-                            # a new window is shown, clean the old_runtime_widgets
-                            client.old_runtime_widgets = dict()
                             for ws in client.websockets:
                                 try:
                                     html = client.root.repr(client)
@@ -387,6 +368,7 @@ class _UpdateThread(threading.Thread):
                         client.old_root_window = client.root
                         client.idle()
                         gui_updater(client, client.root)
+                        
                 except Exception as e:
                     log.error('error updating gui', exc_info=True)
 
@@ -414,7 +396,7 @@ class App(BaseHTTPRequestHandler, object):
     def log_error(self, format_string, *args):
         msg = format_string % args
         self._log.error("%s %s" % (self.address_string(), msg))
-
+    
     def instance(self):
         global clients
         global runtimeInstances
@@ -425,8 +407,8 @@ class App(BaseHTTPRequestHandler, object):
         multiple clients" or "multiple instance for multiple clients" execution way
         """
         k = get_instance_key(self)
-        if not(k in clients.keys()):
-            runtimeInstances.append(self)
+        if not(k in clients):
+            runtimeInstances[str(id(self))] = self
             clients[k] = self
         wshost, wsport = self.server.websocket_address
         net_interface_ip = self.connection.getsockname()[0]
@@ -491,7 +473,7 @@ openSocket();
 var comTimeout = null;
 function websocketOnMessage (evt){
     var received_msg = evt.data;
-    console.debug('Message is received:' + received_msg);
+    /*console.debug('Message is received:' + received_msg);*/
     var s = received_msg.split(',');
     var command = s[0];
     var index = received_msg.indexOf(',')+1;
@@ -513,12 +495,17 @@ function websocketOnMessage (evt){
             var elem = document.getElementById(s[2]);
             elem.innerHTML = elem.innerHTML + decodeURIComponent(content);
         }
+    }else if( command=='javascript'){
+        try{
+            console.debug("executing js code: " + received_msg);
+            eval(received_msg);
+        }catch(e){console.debug(e.message);};
     }else if( command=='ack'){
         pendingSendMessages.shift() /*remove the oldest*/
         if(comTimeout!=null)clearTimeout(comTimeout);
     }
-    console.debug('command:' + command);
-    console.debug('content:' + content);
+    /*console.debug('command:' + command);
+    console.debug('content:' + content);*/
 };
 /*this uses websockets*/
 var sendCallbackParam = function (widgetID,functionName,params /*a dictionary of name:value*/){
@@ -622,7 +609,47 @@ function uploadFile(widgetID, eventSuccess, eventFail, savePath,file){
         """ Idle function called every UPDATE_INTERVAL before the gui update.
             Usefull to schedule tasks. """
         pass
-
+        
+    def send_spontaneous_websocket_message(self, message):
+        """this code allows to send spontaneous messages to the clients.
+           It can be considered thread-safe because can be called in two contextes:
+           1- A received message from websocket in case of an event, and the update_lock is already locked
+           2- An internal application event like a Timer, and the update thread is paused by update_event.wait
+        """
+        global update_lock, update_event
+        update_event.wait()
+        for ws in self.websockets:
+            try:
+                print("sending websocket spontaneous message")
+                ws.send_message(message)
+            except:
+                print("ERROR sending websocket spontaneous message")
+                client.websockets.remove(ws)
+        update_event.clear()
+        
+    def notification_message(self, title, content, icon=""):
+        """This function sends "javascript" message to the client, that executes its content.
+           In this particular code, a notification message is shown
+        """
+        code = """
+            var options = {
+                body: "%(content)s",
+                icon: "%(icon)s"
+            }
+            if (!("Notification" in window)) {
+                alert("%(content)s");
+            }else if (Notification.permission === "granted") {
+                var notification = new Notification("%(title)s", options);
+            }else if (Notification.permission !== 'denied') {
+                Notification.requestPermission(function (permission) {
+                    if (permission === "granted") {
+                        var notification = new Notification("%(title)s", options);
+                    }
+                });
+            }
+        """%{'title': title, 'content': content, 'icon': icon}
+        self.send_spontaneous_websocket_message('javascript,' + code)
+    
     def do_POST(self):
         self.instance()
         file_data = None
@@ -671,15 +698,15 @@ function uploadFile(widgetID, eventSuccess, eventFail, savePath,file){
         if self.server.auth is None:
             do_process = True
         else:
-            if self.headers.getheader('Authorization') is None:
+            if not ('Authorization' in self.headers) or self.headers['Authorization'] is None:
                 log.info("Authenticating")
                 self.do_AUTHHEAD()
                 self.wfile.write('no auth header received')
-            elif self.headers.getheader('Authorization') == 'Basic ' + self.server.auth:
+            elif self.headers['Authorization'] == 'Basic ' + self.server.auth.decode():
                 do_process = True
             else:
                 self.do_AUTHHEAD()
-                self.wfile.write(self.headers.getheader('Authorization'))
+                self.wfile.write(self.headers['Authorization'])
                 self.wfile.write('not authenticated')
 
         if do_process:
@@ -797,7 +824,7 @@ class Server(object):
         self._websocket_port = websocket_port
         self._pending_messages_queue_length = pending_messages_queue_length
         if username and password:
-            self._auth = base64.b64encode("%s:%s" % (username,password))
+            self._auth = base64.b64encode(encodeIfPyGT3("%s:%s" % (username,password)))
         else:
             self._auth = None
 
