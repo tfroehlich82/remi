@@ -135,9 +135,18 @@ class Tag(object):
         self.children = VersionedDictionary()
         self.attributes = VersionedDictionary()  # properties as class id style
 
-        self.type = ''
+        self.type = kwargs.get('_type', '')
         self.attributes['id'] = str(id(self))
-        self.attributes['class'] = self.__class__.__name__
+
+        cls = kwargs.get('_class', self.__class__.__name__)
+        if cls:
+            self._classes = [cls]
+        else:
+            self._classes = []
+
+    @property
+    def identifier(self):
+        return self.attributes['id']
 
     def repr(self, client, include_children=True):
         """It is used to automatically represent the object to HTML format
@@ -165,12 +174,22 @@ class Tag(object):
             elif include_children:
                 innerHTML = innerHTML + s.repr(client)
 
-        html = '<%s %s>%s</%s>' % (self.type,
+        html = '<%s %s %s>%s</%s>' % (self.type,
                                    ' '.join('%s="%s"' % (k, v) if v is not None else k for k, v in
                                             self.attributes.items()),
+                                   ('class="%s"' % ' '.join(self._classes)) if self._classes else '',
                                    innerHTML,
                                    self.type)
         return html
+
+    def add_class(self, cls):
+        self._classes.append(cls)
+
+    def remove_class(self, cls):
+        try:
+            self._classes.remove(cls)
+        except ValueError:
+            pass
 
     def add_child(self, key, child):
         """Adds a child to the Tag
@@ -258,11 +277,12 @@ class Widget(Tag):
         height : int or str
             An optional height for the widget (es. height=10 or height='10px' or height='10%').
         """
+        if '_type' not in kwargs:
+            kwargs['_type'] = 'div'
+
         super(Widget, self).__init__(**kwargs)
 
         self.style = VersionedDictionary()
-
-        self.type = 'div'
 
         # some constants for the events
         self.EVENT_ONCLICK = 'onclick'
@@ -288,6 +308,7 @@ class Widget(Tag):
         self.EVENT_ONCONTEXTMENU = "oncontextmenu"
         self.EVENT_ONUPDATE = 'onupdate'
 
+        # centers the div
         self.style['margin'] = '0px auto'
 
         self.layout_orientation = Widget.LAYOUT_VERTICAL
@@ -341,26 +362,33 @@ class Widget(Tag):
         update_event.set()
 
     def repr(self, client, include_children=True):
-        """It is used to automatically represent the widget to HTML format
-        packs all the attributes, children and so on.
+        """Represents the widget as HTML format, packs all the attributes, children and so on.
 
         Parameters
         ----------
-        client (App): Client instance.
-        include_children (bool): Determines if the children have to be represented together with this Widget.
+        client : App
+            Client instance.
+        include_children : bool
+            Determines if the children have to be represented together with this Widget.
         """
         self.attributes['style'] = jsonize(self.style)
         return super(Widget, self).repr(client, include_children)
 
     def append(self, value, key=''):
-        """It allows to add child widgets to this.
+        """Adds a child widget, generating and returning a key if not provided
 
         In order to access to the specific child in this way widget.children[key].
 
         Parameters
         ----------
-        value (Tag, Widget): The Tag or Widget instance to be appended.
-        key (str): The unique string identifier for the child.
+        value : Tag or Widget
+            The child to be appended.
+        key : str
+            The unique string identifier for the child or ''
+        Returns
+        -------
+        str
+            a key used to refer to the child for all future interaction
         """
         if not isinstance(value, Widget):
             raise ValueError('value should be a Widget (otherwise use add_child(key,other)')
@@ -378,8 +406,7 @@ class Widget(Tag):
         return key
 
     def onfocus(self):
-        """Called when the Widget gets the focus.
-        """
+        """Called when the Widget gets focus."""
         return self.eventManager.propagate(self.EVENT_ONFOCUS, [])
 
     @decorate_set_on_listener("onfocus", "(self)")
@@ -388,8 +415,10 @@ class Widget(Tag):
 
         Parameters
         ----------
-        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
-        funcname (str): Literal name of the listener function, member of the listener instance
+        listener : App or Widget
+            Instance of the listener. It can be the App or a Widget.
+        funcname : str
+            Literal name of the listener function, member of the listener instance
         """
         self.attributes[self.EVENT_ONFOCUS] = \
             "sendCallback('%s','%s');" \
@@ -398,8 +427,7 @@ class Widget(Tag):
         self.eventManager.register_listener(self.EVENT_ONFOCUS, listener, funcname)
 
     def onblur(self):
-        """Called when the Widget losts the focus.
-        """
+        """Called when the Widget loses focus"""
         return self.eventManager.propagate(self.EVENT_ONBLUR, [])
 
     @decorate_set_on_listener("onblur", "(self)")
@@ -408,8 +436,10 @@ class Widget(Tag):
 
         Parameters
         ----------
-        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
-        funcname (str): Literal name of the listener function, member of the listener instance
+        listener : App or Widget
+            Instance of the listener. It can be the App or a Widget.
+        funcname : str
+            Literal name of the listener function, member of the listener instance
         """
         self.attributes[self.EVENT_ONBLUR] = \
             "sendCallback('%s','%s');" \
@@ -418,11 +448,11 @@ class Widget(Tag):
         self.eventManager.register_listener(self.EVENT_ONBLUR, listener, funcname)
 
     def show(self, baseAppInstance):
-        """Allows to show the widget as root window.
+        """Sets this widget as the root widget on the supplied app instance
 
         Parameters
         ----------
-        baseAppInstance (App): Instance of the App class.
+        baseAppInstance : App
         """
         self.baseAppInstance = baseAppInstance
         # here the widget is set up as root, in server.gui_updater is monitored
@@ -436,8 +466,7 @@ class Widget(Tag):
             self.baseAppInstance.client.root = self.oldRootWidget
 
     def onclick(self):
-        """Called when the Widget gets clicked by the user with the left mouse button.
-        """
+        """Called when the Widget gets clicked by the user with the left mouse button."""
         return self.eventManager.propagate(self.EVENT_ONCLICK, [])
 
     @decorate_set_on_listener("onclick", "(self)")
@@ -446,7 +475,7 @@ class Widget(Tag):
 
         Parameters
         ----------
-        listener (App, Widget): Instance of the listener. It can be the App or a Widget.
+        listener :  App or Widget): Instance of the listener. It can be the App or a Widget.
         funcname (str): Literal name of the listener function, member of the listener instance
         """
         self.attributes[self.EVENT_ONCLICK] = \
@@ -770,6 +799,9 @@ class HBox(Widget):
         kwargs (height): An optional height for the widget (es. height=10 or height='10px' or height='10%').
         """
         super(HBox, self).__init__(**kwargs)
+
+        # fixme: support old browsers
+        # http://stackoverflow.com/a/19031640
         self.style['display'] = 'flex'
         self.style['justify-content'] = 'space-around'
         self.style['align-items'] = 'center'
@@ -1708,9 +1740,9 @@ class Input(Widget):
         kwargs (width): An optional width for the widget (es. width=10 or width='10px' or width='10%').
         kwargs (height): An optional height for the widget (es. height=10 or height='10px' or height='10%').
         """
+        kwargs['_class'] = input_type
         super(Input, self).__init__(**kwargs)
         self.type = 'input'
-        self.attributes['class'] = input_type
 
         self.attributes[self.EVENT_ONCLICK] = ''
         self.attributes[self.EVENT_ONCHANGE] = \
@@ -1735,6 +1767,25 @@ class Input(Widget):
     def set_on_change_listener(self, listener, funcname):
         """register the listener for the onchange event."""
         self.eventManager.register_listener(self.EVENT_ONCHANGE, listener, funcname)
+
+    def set_enabled(self, enabled):
+        if enabled:
+            try:
+                del self.attributes['disabled']
+            except KeyError:
+                pass
+        else:
+            self.attributes['disabled'] = None
+
+
+    def set_read_only(self, readonly):
+        if readonly:
+            self.attributes['readonly'] = None
+        else:
+            try:
+                del self.attributes['readonly']
+            except KeyError:
+                pass
 
 
 class CheckBoxLabel(Widget):
@@ -2062,12 +2113,11 @@ class FileFolderItem(Widget):
         self.isFolder = is_folder
         self.EVENT_ONSELECTION = 'onselection'
         self.attributes[self.EVENT_ONCLICK] = ''
-        self.icon = Widget()
+        self.icon = Widget(_class='FileFolderItemIcon')
         self.icon.set_size(30, 30)
         # the icon click activates the onselection event, that is propagates to registered listener
         if is_folder:
             self.icon.set_on_click_listener(self, self.EVENT_ONCLICK)
-        self.icon.attributes['class'] = 'FileFolderItemIcon'
         icon_file = 'res/folder.png' if is_folder else 'res/file.png'
         self.icon.style['background-image'] = "url('%s')" % icon_file
         self.label = Label(text)
