@@ -22,28 +22,6 @@ from .server import runtimeInstances, update_event
 log = logging.getLogger('remi.gui')
 
 
-class VersionedDictionary(dict):
-    """This dictionary allows to check if its content is changed.
-       It has an attribute __version__ of type int that increments every change
-    """
-    def __init__(self, *args, **kwargs):
-        self.__version__ = 0
-        super(VersionedDictionary, self).__init__(*args, **kwargs)
-
-    def __setitem__(self, key, value):
-        if key in self:
-            if self[key] == value:
-                return
-        self.__version__ += 1
-        return super(VersionedDictionary, self).__setitem__(key, value)
-
-    def __delitem__(self, key):
-        if not key in self:
-            return
-        self.__version__ += 1
-        return super(VersionedDictionary, self).__delitem__(key)
-
-
 def decorate_set_on_listener(event_name, params):
     """ private decorator for use in the editor
 
@@ -89,7 +67,29 @@ def jsonize(d):
     return ';'.join(map(lambda k, v: k + ':' + v + '', d.keys(), d.values()))
 
 
-class EventManager(object):
+class _VersionedDictionary(dict):
+    """This dictionary allows to check if its content is changed.
+       It has an attribute __version__ of type int that increments every change
+    """
+    def __init__(self, *args, **kwargs):
+        self.__version__ = 0
+        super(_VersionedDictionary, self).__init__(*args, **kwargs)
+
+    def __setitem__(self, key, value):
+        if key in self:
+            if self[key] == value:
+                return
+        self.__version__ += 1
+        return super(_VersionedDictionary, self).__setitem__(key, value)
+
+    def __delitem__(self, key):
+        if not key in self:
+            return
+        self.__version__ += 1
+        return super(_VersionedDictionary, self).__delitem__(key)
+
+
+class _EventManager(object):
     """Manages the event propagation to the listeners functions"""
 
     def __init__(self):
@@ -132,8 +132,8 @@ class Tag(object):
 
         self._render_children_list = []
 
-        self.children = VersionedDictionary()
-        self.attributes = VersionedDictionary()  # properties as class id style
+        self.children = _VersionedDictionary()
+        self.attributes = _VersionedDictionary()  # properties as class id style
 
         self.type = kwargs.get('_type', '')
         self.attributes['id'] = str(id(self))
@@ -267,6 +267,30 @@ class Widget(Tag):
     LAYOUT_HORIZONTAL = True
     LAYOUT_VERTICAL = False
 
+    # some constants for the events
+    EVENT_ONCLICK = 'onclick'
+    EVENT_ONDBLCLICK = 'ondblclick'
+    EVENT_ONMOUSEDOWN = 'onmousedown'
+    EVENT_ONMOUSEMOVE = 'onmousemove'
+    EVENT_ONMOUSEOVER = 'onmouseover'
+    EVENT_ONMOUSEOUT = 'onmouseout'
+    EVENT_ONMOUSELEAVE = 'onmouseleave'
+    EVENT_ONMOUSEUP = 'onmouseup'
+    EVENT_ONTOUCHMOVE = 'ontouchmove'
+    EVENT_ONTOUCHSTART = 'ontouchstart'
+    EVENT_ONTOUCHEND = 'ontouchend'
+    EVENT_ONTOUCHENTER = 'ontouchenter'
+    EVENT_ONTOUCHLEAVE = 'ontouchleave'
+    EVENT_ONTOUCHCANCEL = 'ontouchcancel'
+    EVENT_ONKEYDOWN = 'onkeydown'
+    EVENT_ONKEYPRESS = 'onkeypress'
+    EVENT_ONKEYUP = 'onkeyup'
+    EVENT_ONCHANGE = 'onchange'
+    EVENT_ONFOCUS = 'onfocus'
+    EVENT_ONBLUR = 'onblur'
+    EVENT_ONCONTEXTMENU = "oncontextmenu"
+    EVENT_ONUPDATE = 'onupdate'
+
     @decorate_constructor_parameter_types([])
     def __init__(self, **kwargs):
         """
@@ -282,31 +306,7 @@ class Widget(Tag):
 
         super(Widget, self).__init__(**kwargs)
 
-        self.style = VersionedDictionary()
-
-        # some constants for the events
-        self.EVENT_ONCLICK = 'onclick'
-        self.EVENT_ONDBLCLICK = 'ondblclick'
-        self.EVENT_ONMOUSEDOWN = 'onmousedown'
-        self.EVENT_ONMOUSEMOVE = 'onmousemove'
-        self.EVENT_ONMOUSEOVER = 'onmouseover'
-        self.EVENT_ONMOUSEOUT = 'onmouseout'
-        self.EVENT_ONMOUSELEAVE = 'onmouseleave'
-        self.EVENT_ONMOUSEUP = 'onmouseup'
-        self.EVENT_ONTOUCHMOVE = 'ontouchmove'
-        self.EVENT_ONTOUCHSTART = 'ontouchstart'
-        self.EVENT_ONTOUCHEND = 'ontouchend'
-        self.EVENT_ONTOUCHENTER = 'ontouchenter'
-        self.EVENT_ONTOUCHLEAVE = 'ontouchleave'
-        self.EVENT_ONTOUCHCANCEL = 'ontouchcancel'
-        self.EVENT_ONKEYDOWN = 'onkeydown'
-        self.EVENT_ONKEYPRESS = 'onkeypress'
-        self.EVENT_ONKEYUP = 'onkeyup'
-        self.EVENT_ONCHANGE = 'onchange'
-        self.EVENT_ONFOCUS = 'onfocus'
-        self.EVENT_ONBLUR = 'onblur'
-        self.EVENT_ONCONTEXTMENU = "oncontextmenu"
-        self.EVENT_ONUPDATE = 'onupdate'
+        self.style = _VersionedDictionary()
 
         # centers the div
         self.style['margin'] = '0px auto'
@@ -315,7 +315,7 @@ class Widget(Tag):
 
         self.oldRootWidget = None  # used when hiding the widget
 
-        self.eventManager = EventManager()
+        self.eventManager = _EventManager()
 
         self.set_size(kwargs.get('width'), kwargs.get('height'))
 
@@ -519,7 +519,8 @@ class Widget(Tag):
         """
         self.attributes[self.EVENT_ONMOUSEDOWN] = \
             "var params={};" \
-            "params['x']=event.clientX-this.offsetLeft;params['y']=event.clientY-this.offsetTop;" \
+            "params['x']=event.clientX-this.offsetLeft;" \
+            "params['y']=event.clientY-this.offsetTop;" \
             "sendCallbackParam('%s','%s',params);" \
             "event.stopPropagation();event.preventDefault();" \
             "return false;" % (id(self), self.EVENT_ONMOUSEDOWN)
@@ -541,7 +542,8 @@ class Widget(Tag):
         """
         self.attributes[self.EVENT_ONMOUSEUP] = \
             "var params={};" \
-            "params['x']=event.clientX-this.offsetLeft;params['y']=event.clientY-this.offsetTop;" \
+            "params['x']=event.clientX-this.offsetLeft;" \
+            "params['y']=event.clientY-this.offsetTop;" \
             "sendCallbackParam('%s','%s',params);" \
             "event.stopPropagation();event.preventDefault();" \
             "return false;" % (id(self), self.EVENT_ONMOUSEUP)
@@ -614,7 +616,8 @@ class Widget(Tag):
         """
         self.attributes[self.EVENT_ONMOUSEMOVE] = \
             "var params={};" \
-            "params['x']=event.clientX-this.offsetLeft;params['y']=event.clientY-this.offsetTop;" \
+            "params['x']=event.clientX-this.offsetLeft;" \
+            "params['y']=event.clientY-this.offsetTop;" \
             "sendCallbackParam('%s','%s',params);" \
             "event.stopPropagation();event.preventDefault();" \
             "return false;" % (id(self), self.EVENT_ONMOUSEMOVE)
@@ -921,6 +924,8 @@ class TextInput(Widget):
      retrieve its content with get_text.
     """
 
+    EVENT_ONENTER = 'onenter'
+
     @decorate_constructor_parameter_types([bool])
     def __init__(self, single_line=True, **kwargs):
         """
@@ -934,7 +939,6 @@ class TextInput(Widget):
         super(TextInput, self).__init__(**kwargs)
         self.type = 'textarea'
 
-        self.EVENT_ONENTER = 'onenter'
         self.attributes[self.EVENT_ONCLICK] = ''
         self.attributes[self.EVENT_ONCHANGE] = \
             "var params={};params['new_value']=document.getElementById('%(id)s').value;" \
@@ -1111,6 +1115,9 @@ class GenericDialog(Widget):
     The Cancel button emits the 'cancel_dialog' event. Register the listener to it with set_on_cancel_dialog_listener.
     """
 
+    EVENT_ONCONFIRM = 'confirm_dialog'
+    EVENT_ONCANCEL = 'cancel_dialog'
+
     @decorate_constructor_parameter_types([str, str])
     def __init__(self, title='', message='', **kwargs):
         """
@@ -1125,9 +1132,6 @@ class GenericDialog(Widget):
         self.set_layout_orientation(Widget.LAYOUT_VERTICAL)
         self.style['display'] = 'block'
         self.style['overflow'] = 'auto'
-
-        self.EVENT_ONCONFIRM = 'confirm_dialog'
-        self.EVENT_ONCANCEL = 'cancel_dialog'
 
         if len(title) > 0:
             t = Label(title)
@@ -1264,6 +1268,8 @@ class InputDialog(GenericDialog):
     The Cancel button emits the 'cancel_dialog' event. Register the listener to it with set_on_cancel_dialog_listener.
     """
 
+    EVENT_ONCONFIRMVALUE = 'confirm_value'
+
     @decorate_constructor_parameter_types([str, str, str])
     def __init__(self, title='Title', message='Message', initial_value='', **kwargs):
         """
@@ -1282,7 +1288,6 @@ class InputDialog(GenericDialog):
         self.add_field('textinput', self.inputText)
         self.inputText.set_text(initial_value)
 
-        self.EVENT_ONCONFIRMVALUE = 'confirm_value'
         self.set_on_confirm_dialog_listener(self, 'confirm_value')
 
     def on_text_enter_listener(self, value):
@@ -1318,6 +1323,8 @@ class ListView(Widget):
     its onselection event. Register a listener with ListView.set_on_selection_listener.
     """
 
+    EVENT_ONSELECTION = 'onselection'
+
     @decorate_constructor_parameter_types([])
     def __init__(self, **kwargs):
         """
@@ -1328,7 +1335,6 @@ class ListView(Widget):
         """
         super(ListView, self).__init__(**kwargs)
         self.type = 'ul'
-        self.EVENT_ONSELECTION = 'onselection'
         self.selected_item = None
         self.selected_key = None
 
@@ -1868,6 +1874,9 @@ class SpinBox(Input):
 
 
 class Slider(Input):
+
+    EVENT_ONINPUT = 'oninput'
+
     @decorate_constructor_parameter_types([str, int, int, int])
     def __init__(self, default_value='', min=0, max=10000, step=1, **kwargs):
         """
@@ -1880,7 +1889,7 @@ class Slider(Input):
         self.attributes['min'] = str(min)
         self.attributes['max'] = str(max)
         self.attributes['step'] = str(step)
-        self.EVENT_ONINPUT = 'oninput'
+
 
     def oninput(self, value):
         return self.eventManager.propagate(self.EVENT_ONINPUT, [value])
@@ -2099,6 +2108,8 @@ class FileFolderNavigator(Widget):
 class FileFolderItem(Widget):
     """FileFolderItem widget for the FileFolderNavigator"""
 
+    EVENT_ONSELECTION = 'onselection'
+
     @decorate_constructor_parameter_types([str, bool])
     def __init__(self, text, is_folder=False, **kwargs):
         """
@@ -2111,7 +2122,6 @@ class FileFolderItem(Widget):
         super(FileFolderItem, self).set_layout_orientation(Widget.LAYOUT_HORIZONTAL)
         self.style['margin'] = '3px'
         self.isFolder = is_folder
-        self.EVENT_ONSELECTION = 'onselection'
         self.attributes[self.EVENT_ONCLICK] = ''
         self.icon = Widget(_class='FileFolderItemIcon')
         self.icon.set_size(30, 30)
@@ -2158,6 +2168,8 @@ class FileSelectionDialog(GenericDialog):
     """file selection dialog, it opens a new webpage allows the OK/CANCEL functionality
     implementing the "confirm_value" and "cancel_dialog" events."""
 
+    EVENT_ONCONFIRMVALUE = 'confirm_value'
+
     @decorate_constructor_parameter_types([str, str, bool, str, bool, bool])
     def __init__(self, title='File dialog', message='Select files and folders',
                  multiple_selection=True, selection_folder='.',
@@ -2175,7 +2187,6 @@ class FileSelectionDialog(GenericDialog):
                                                        allow_file_selection,
                                                        allow_folder_selection)
         self.add_field('fileFolderNavigator', self.fileFolderNavigator)
-        self.EVENT_ONCONFIRMVALUE = 'confirm_value'
         self.set_on_confirm_dialog_listener(self, 'confirm_value')
 
     def confirm_value(self):
