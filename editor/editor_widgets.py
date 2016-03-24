@@ -37,7 +37,9 @@ class SignalConnection(gui.Widget):
     def __init__(self, widget, listenersList, eventConnectionFuncName, eventConnectionFunc, **kwargs):
         super(SignalConnection, self).__init__(**kwargs)
         self.set_layout_orientation(gui.Widget.LAYOUT_HORIZONTAL)
-        self.style['overflow'] = 'hidden'
+        self.style['overflow'] = 'visible'
+        self.style['height'] = '24px'
+        self.style['display'] = 'block'
         self.label = gui.Label(eventConnectionFuncName, width='49%')
         self.label.style['float'] = 'left'
         self.label.style['font-size'] = '10px'
@@ -82,9 +84,10 @@ class SignalConnectionManager(gui.Widget):
     """ This class allows to interconnect event signals """
     def __init__(self, **kwargs):
         super(SignalConnectionManager, self).__init__(**kwargs)
-        self.label = gui.Label('Signal connections')
+        self.label = gui.Label('Signal connections', width='100%', height='10%')
+        self.label.style['font-weight'] = 'bold'
         self.append(self.label)
-        self.container = gui.VBox(width='100%')
+        self.container = gui.VBox(width='100%', height='90%')
         self.container.style['overflow-y'] = 'scroll'
         self.listeners_list = []
 
@@ -107,7 +110,7 @@ class SignalConnectionManager(gui.Widget):
 
         self.label.set_text('Signal connections: ' + widget.attributes['editor_varname'])
         del self.container
-        self.container = gui.VBox(width='100%')
+        self.container = gui.VBox(width='100%', height='90%')
         self.container.style['overflow-y'] = 'scroll'
         self.append(self.container, 'container')
         ##for all the events of this widget
@@ -215,33 +218,37 @@ class EditorFileSaveDialog(gui.FileSelectionDialog):
         return self.eventManager.propagate(self.EVENT_ONCONFIRMVALUE, params)
         
         
-class WidgetHelper(gui.ListItem):
+class WidgetHelper(gui.HBox):
     """ Allocates the Widget to which it refers, 
         interfacing to the user in order to obtain the necessary attribute values
         obtains the constructor parameters, asks for them in a dialog
         puts the values in an attribute called constructor
     """
 
-    def __init__(self, widgetClass, **kwargs_to_widget):
+    def __init__(self, appInstance, widgetClass, **kwargs_to_widget):
         self.kwargs_to_widget = kwargs_to_widget
+        self.appInstance = appInstance
         self.widgetClass = widgetClass
-        super(WidgetHelper, self).__init__('')
+        super(WidgetHelper, self).__init__()
         self.style['display'] = 'block'
-        self.style['margin'] = '5px auto'
-        self.container = gui.HBox(width='100%', height=40)
-        self.container.set_layout_orientation(gui.Widget.LAYOUT_HORIZONTAL)
-        self.container.style['background-color'] = 'transparent'
-        self.container.style['justify-content'] = 'flex-start'
-        self.container.style['-webkit-justify-content'] = 'flex-start'
-        self.icon = gui.Image('/res/widget_%s.png'%self.widgetClass.__name__, width=120, height=40)
+        self.style['background-color'] = 'white'
+        self.icon = gui.Image('/res/widget_%s.png'%self.widgetClass.__name__, width='auto')
+        self.icon.style['max-width'] = '100%'
         self.icon.style['margin'] = '2px'
-        self.label = gui.Label(self.widgetClass.__name__)
-        self.label.style['margin'] = ''
-        self.label.style['align-self'] = 'center'
-        self.container.append(self.icon)
-        self.container.append(self.label)
-        self.append(self.container)
-
+        self.icon.style['image-rendering'] = 'auto'
+        self.icon.attributes['draggable'] = 'false'
+        self.icon.attributes['ondragstart'] = "event.preventDefault();"
+        self.append(self.icon)
+        
+        self.attributes['draggable'] = 'true'
+        self.attributes['ondragstart'] = "this.style.cursor='move'; event.dataTransfer.dropEffect = 'move';   event.dataTransfer.setData('application/json', JSON.stringify(['add',event.target.id,(event.clientX),(event.clientY)]));"
+        self.attributes['ondragover'] = "event.preventDefault();"   
+        self.attributes['ondrop'] = "event.preventDefault();return false;"
+        
+        self.optional_style_dict = {} #this dictionary will contain optional style attributes that have to be added to the widget once created
+        
+        self.set_on_click_listener(self, 'prompt_new_widget')
+        
     def build_widget_name_list_from_tree(self, node):
         if not hasattr(node, 'attributes'):
             return
@@ -251,12 +258,11 @@ class WidgetHelper(gui.ListItem):
         for child in node.children.values():
             self.build_widget_name_list_from_tree(child)
         
-    def prompt_new_widget(self, appInstance, widgets_tree):
+    def prompt_new_widget(self):
         self.varname_list = list()
         
-        self.build_widget_name_list_from_tree(widgets_tree)
+        self.build_widget_name_list_from_tree(self.appInstance.project)
         
-        self.appInstance = appInstance
         self.constructor_parameters_list = self.widgetClass.__init__.__code__.co_varnames[1:] #[1:] removes the self
         param_annotation_dict = ''#self.widgetClass.__init__.__annotations__
         self.dialog = gui.GenericDialog(title=self.widgetClass.__name__, message='Fill the following parameters list', width='40%')
@@ -283,6 +289,11 @@ class WidgetHelper(gui.ListItem):
         self.dialog.add_field_with_label("editor_newclass", "Overload base class", gui.CheckBox())
         self.dialog.set_on_confirm_dialog_listener(self, "on_dialog_confirm")
         self.dialog.show(self.appInstance)
+
+    def on_dropped(self, left, top):
+        self.optional_style_dict['left'] = gui.to_pix(left)
+        self.optional_style_dict['top'] = gui.to_pix(top)
+        self.prompt_new_widget()
         
     def on_dialog_confirm(self):
         """ Here the widget is allocated
@@ -329,6 +340,11 @@ class WidgetHelper(gui.ListItem):
             widget.style['position'] = 'absolute'
         if not 'display' in widget.style:
             widget.style['display'] = 'block'
+            
+        for key in self.optional_style_dict:
+            widget.style[key] = self.optional_style_dict[key]
+        self.optional_style_dict = {}
+        
         self.appInstance.add_widget_to_editor(widget)
 
 
@@ -338,12 +354,15 @@ class WidgetCollection(gui.Widget):
         super(WidgetCollection, self).__init__(**kwargs)
         
         self.lblTitle = gui.Label("Widgets Toolbox")
-        self.listWidgets = gui.ListView(width='100%', height='85%')
-        self.listWidgets.style['overflow-y'] = 'scroll'
-        self.listWidgets.style['overflow-x'] = 'hidden'
-        
+        self.lblTitle.style['font-weight'] = 'bold'
+        self.widgetsContainer = gui.HBox(width='100%', height='85%')
+        self.widgetsContainer.style['overflow-y'] = 'scroll'
+        self.widgetsContainer.style['overflow-x'] = 'hidden'
+        self.widgetsContainer.style['flex-wrap'] = 'wrap'
+        self.widgetsContainer.style['background-color'] = 'white'
+
         self.append(self.lblTitle)
-        self.append(self.listWidgets)
+        self.append(self.widgetsContainer)
         
         #load all widgets
         self.add_widget_to_collection(gui.HBox, width='250px', height='250px')
@@ -369,11 +388,9 @@ class WidgetCollection(gui.Widget):
     def add_widget_to_collection(self, widgetClass, **kwargs_to_widget):
         #create an helper that will be created on click
         #the helper have to search for function that have 'return' annotation 'event_listener_setter'
-        helper = WidgetHelper(widgetClass, **kwargs_to_widget)
+        helper = WidgetHelper(self.appInstance, widgetClass, **kwargs_to_widget)
         helper.attributes['title'] = widgetClass.__doc__
-        helper.style['width'] = '100%'
-        self.listWidgets.append( helper )
-        helper.set_on_click_listener(self.appInstance, "widget_helper_clicked")
+        self.widgetsContainer.append( helper )
 
 
 class EditorAttributesGroup(gui.Widget):
@@ -415,7 +432,9 @@ class EditorAttributes(gui.VBox):
         self.style['justify-content'] = 'flex-start'
         self.style['-webkit-justify-content'] = 'flex-start'
         self.titleLabel = gui.Label('Attributes editor')
+        self.titleLabel.style['font-weight'] = 'bold'
         self.infoLabel = gui.Label('Selected widget: None')
+        self.infoLabel.style['font-weight'] = 'bold'
         self.append(self.titleLabel)
         self.append(self.infoLabel)
 

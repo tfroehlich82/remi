@@ -34,7 +34,7 @@ class ResizeHelper(gui.Widget):
         self.style['left']='0px'
         self.style['top']='0px'
         self.attributes['draggable'] = 'true'
-        self.attributes['ondragstart'] = "this.style.cursor='move'; event.dataTransfer.dropEffect = 'move';   event.dataTransfer.setData('application/json', JSON.stringify([event.target.id,(event.clientX),(event.clientY)]));"
+        self.attributes['ondragstart'] = "this.style.cursor='move'; event.dataTransfer.dropEffect = 'move';   event.dataTransfer.setData('application/json', JSON.stringify(['resize',event.target.id,(event.clientX),(event.clientY)]));"
         self.attributes['ondragover'] = "event.preventDefault();"   
         self.attributes['ondrop'] = "event.preventDefault();return false;"
         self.parent = None
@@ -123,7 +123,10 @@ class Project(gui.Widget):
 
                     sourcename = widgetVarName
                     if len(source_filtered_path)>0:
-                        sourcename = "self.children['" + "'].children['".join(source_filtered_path) + "']"
+                        if len(source_filtered_path)>1:
+                            sourcename = "self.children['" + "'].children['".join(source_filtered_path) + "']"
+                        else:
+                            sourcename = event['eventsource'].attributes['editor_varname']
                     if force==True:
                         if self.children['root'].attributes['editor_varname'] in source_filtered_path:
                             source_filtered_path.remove(self.children['root'].attributes['editor_varname'])
@@ -133,7 +136,10 @@ class Project(gui.Widget):
 
                     listenername = "self"
                     if len(listener_filtered_path)>0:
-                        listenername = "self.children['" + "'].children['".join(listener_filtered_path) + "']"
+                        if len(listener_filtered_path)>1:
+                            listenername = "self.children['" + "'].children['".join(listener_filtered_path) + "']"
+                        else:
+                            listenername = event['eventlistener'].attributes['editor_varname']
                     if force==True:
                         if self.children['root'].attributes['editor_varname'] in listener_filtered_path:
                             listener_filtered_path.remove(self.children['root'].attributes['editor_varname'])
@@ -156,7 +162,7 @@ class Project(gui.Widget):
         if hasattr(widget, 'path_to_this_widget'):
             widget.path_to_this_widget.append( widget.attributes['editor_varname'] )
         else:
-            widget.path_to_this_widget = [widget.attributes['editor_varname'],]
+            widget.path_to_this_widget = []
         
         print(widget.attributes['editor_varname'])
         
@@ -346,18 +352,32 @@ class Editor(App):
         #here are contained the widgets
         self.widgetsCollection = editor_widgets.WidgetCollection(self, width='100%', height='50%')
         
-        self.project = Project(width='56%', height='700px')
+        self.project = Project(width='56%', height='100%')
+        self.project.style['min-height'] = '400px'
         
         self.project.attributes['ondragover'] = "event.preventDefault();"
         self.EVENT_ONDROPPPED = "on_dropped"
         self.project.attributes['ondrop'] = """event.preventDefault();
                 var data = JSON.parse(event.dataTransfer.getData('application/json'));
-                document.getElementById(data[0]).style.left = parseInt(document.getElementById(data[0]).style.left) + event.clientX - data[1] + 'px';
-                document.getElementById(data[0]).style.top = parseInt(document.getElementById(data[0]).style.top) + event.clientY - data[2] + 'px';
+                var params={};
+                if( data[0] == 'resize'){
+                    document.getElementById(data[1]).style.left = parseInt(document.getElementById(data[1]).style.left) + event.clientX - data[2] + 'px';
+                    document.getElementById(data[1]).style.top = parseInt(document.getElementById(data[1]).style.top) + event.clientY - data[3] + 'px';
+                    params['left']=document.getElementById(data[1]).style.left;
+                    params['top']=document.getElementById(data[1]).style.top;
+                }
+                if( data[0] == 'add'){
+                    params['left']=event.clientX-event.currentTarget.getBoundingClientRect().left;
+                    params['top']=event.clientY-event.currentTarget.getBoundingClientRect().top;
+                }
+                if( data[0] == 'move'){
+                    document.getElementById(data[1]).style.left = parseInt(document.getElementById(data[1]).style.left) + event.clientX - data[2] + 'px';
+                    document.getElementById(data[1]).style.top = parseInt(document.getElementById(data[1]).style.top) + event.clientY - data[3] + 'px';
+                    params['left']=document.getElementById(data[1]).style.left;
+                    params['top']=document.getElementById(data[1]).style.top;
+                }
                 
-                var params={};params['left']=document.getElementById(data[0]).style.left;
-                params['top']=document.getElementById(data[0]).style.top;
-                sendCallbackParam(data[0],'%(evt)s',params);
+                sendCallbackParam(data[1],'%(evt)s',params);
                 
                 return false;""" % {'evt':self.EVENT_ONDROPPPED}
         self.project.attributes['editor_varname'] = 'App'
@@ -401,19 +421,14 @@ class Editor(App):
         
         # returning the root widget
         return self.mainContainer
-
-    # listener function
-    def widget_helper_clicked(self, helperInstance):
-        """ The widgetHelper is a class that allocates a widget, calling its constructor
-            It informs here that it is clicked by the user and the EditorApp starts the allocation
-            sending its instance in order to show a dialog 
-        """ 
-        helperInstance.prompt_new_widget(self, self.project)
     
     def configure_widget_for_editing(self, widget):
         """ A widget have to be added to the editor, it is configured here in order to be conformant 
             to the editor
         """
+        
+        if not 'editor_varname' in widget.attributes:
+            return
         
         #here, the standard onclick function of the widget is overridden with a custom function
         #this function redirect the onclick event to the editor App in order to manage the event
@@ -430,9 +445,26 @@ class Editor(App):
         #widget.style['resize'] = 'both'
         widget.style['overflow'] = 'auto'
         widget.attributes['draggable'] = 'true'
-        widget.attributes['ondragstart'] = """this.style.cursor='move'; event.dataTransfer.dropEffect = 'move';   event.dataTransfer.setData('application/json', JSON.stringify([event.target.id,(event.clientX),(event.clientY)]));"""
+        widget.attributes['ondragstart'] = """this.style.cursor='move'; event.dataTransfer.dropEffect = 'move'; event.dataTransfer.setData('application/json', JSON.stringify(['move',event.target.id,(event.clientX),(event.clientY)]));"""
         widget.attributes['ondragover'] = "event.preventDefault();"   
-        widget.attributes['ondrop'] = """event.preventDefault();return false;"""
+        widget.EVENT_ONDROPPPED = "on_dropped"
+        widget.attributes['ondrop'] = """
+                var data = JSON.parse(event.dataTransfer.getData('application/json'));
+                var params={};
+                if( data[0] == 'add'){
+                    console.debug('addd---------------------------------------------');
+                    sendCallback('%(id)s','%(event_click)s');
+                    console.debug('dopo---------------------------------------------');
+                    params['left']=event.clientX-event.currentTarget.getBoundingClientRect().left;
+                    params['top']=event.clientY-event.currentTarget.getBoundingClientRect().top;
+                    sendCallbackParam(data[1],'%(evt)s',params);
+                    event.stopPropagation();
+                    event.preventDefault();
+                }
+                
+                
+                return false;""" % {'evt':widget.EVENT_ONDROPPPED, 'id': str(id(widget)), 'event_click': widget.EVENT_ONCLICK}
+                
         widget.attributes['tabindex']=str(self.tabindex)
         if not 'position' in widget.style.keys():
             widget.style['position'] = 'absolute'
@@ -549,7 +581,8 @@ def on_dropped(self, left, top):
     self.style['left']=left
     self.style['top']=top
 
-if __name__ == "__main__":
+
+def main():
     #p = Project()
     #root = p.load('./example_project.py')
     #p.append(root, "root")
@@ -558,4 +591,7 @@ if __name__ == "__main__":
     # starts the webserver
     # optional parameters
     # start(MyApp,address='127.0.0.1', port=8081, multiple_instance=False,enable_file_cache=True, update_interval=0.1, start_browser=True)
-    start(Editor, debug=False, port=8082)
+    start(Editor, debug=False, address='0.0.0.0', port=8082)
+    
+if __name__ == "__main__":
+    main()
