@@ -25,8 +25,7 @@ class ToolBar(gui.Widget):
         self.style['background-color'] = 'white'
     
     def add_command(self, imagePath, listener, listenerFunction, title):
-        icon = gui.Image(imagePath, height='90%')
-        icon.style['margin'] = '0px 1px'
+        icon = gui.Image(imagePath, height='90%', margin='0px 1px')
         icon.style['outline'] = '1px solid lightgray'
         icon.set_on_click_listener(listener, listenerFunction)
         icon.attributes['title'] = title
@@ -84,10 +83,11 @@ class SignalConnectionManager(gui.Widget):
     """ This class allows to interconnect event signals """
     def __init__(self, **kwargs):
         super(SignalConnectionManager, self).__init__(**kwargs)
-        self.label = gui.Label('Signal connections', width='100%', height='10%')
-        self.label.style['font-weight'] = 'bold'
+        self.label = gui.Label('Signal connections', width='100%')
+        self.label.add_class("DialogTitle")
         self.append(self.label)
         self.container = gui.VBox(width='100%', height='90%')
+        self.container.style['justify-content'] = 'flex-start'
         self.container.style['overflow-y'] = 'scroll'
         self.listeners_list = []
 
@@ -111,6 +111,7 @@ class SignalConnectionManager(gui.Widget):
         self.label.set_text('Signal connections: ' + widget.attributes['editor_varname'])
         del self.container
         self.container = gui.VBox(width='100%', height='90%')
+        self.container.style['justify-content'] = 'flex-start'
         self.container.style['overflow-y'] = 'scroll'
         self.append(self.container, 'container')
         ##for all the events of this widget
@@ -127,35 +128,49 @@ class SignalConnectionManager(gui.Widget):
 
 
 class ProjectConfigurationDialog(gui.GenericDialog):
+    KEY_PRJ_NAME = 'config_project_name'
+    KEY_ADDRESS = 'config_address'
+    KEY_PORT = 'config_port'
+    KEY_MULTIPLE_INSTANCE = 'config_multiple_instance'
+    KEY_ENABLE_CACHE = 'config_enable_file_cache'
+    KEY_START_BROWSER = 'config_start_browser'
+    KEY_RESOURCEPATH = 'config_resourcepath'
+    
     def __init__(self, title='', message=''):
         super(ProjectConfigurationDialog, self).__init__('Project Configuration', 'Here are the configuration options of the project.', width=500)
         #standard configuration
         self.configDict = {}
-        self.configDict['config_project_name'] = 'untitled'
-        self.configDict['config_address'] = '0.0.0.0'
-        self.configDict['config_port'] = 8081
-        self.configDict['config_multiple_instance'] = True
-        self.configDict['config_enable_file_cache'] = True
-        self.configDict['config_start_browser'] = True
-        self.configDict['config_resourcepath'] = "./res/"
+        
+        self.configDict[self.KEY_PRJ_NAME] = 'untitled'
+        self.configDict[self.KEY_ADDRESS] = '0.0.0.0'
+        self.configDict[self.KEY_PORT] = 8081
+        self.configDict[self.KEY_MULTIPLE_INSTANCE] = True
+        self.configDict[self.KEY_ENABLE_CACHE] = True
+        self.configDict[self.KEY_START_BROWSER] = True
+        self.configDict[self.KEY_RESOURCEPATH] = "./res/"
 
-        self.add_field_with_label( 'config_project_name', 'Project Name', gui.TextInput() )
-        self.add_field_with_label( 'config_address', 'IP address', gui.TextInput() )
-        self.add_field_with_label( 'config_port', 'Listen port', gui.SpinBox(8082, 1025, 65535) )
-        self.add_field_with_label( 'config_multiple_instance', 'Use single App instance for multiple users', gui.CheckBox(True) )
-        self.add_field_with_label( 'config_enable_file_cache', 'Enable file caching', gui.CheckBox(True) )
-        self.add_field_with_label( 'config_start_browser', 'Start browser automatically', gui.CheckBox(True) )
-        self.add_field_with_label( 'config_resourcepath', 'Additional resource path', gui.TextInput() )
+        self.add_field_with_label( self.KEY_PRJ_NAME, 'Project Name', gui.TextInput() )
+        self.add_field_with_label( self.KEY_ADDRESS, 'IP address', gui.TextInput() )
+        self.add_field_with_label( self.KEY_PORT, 'Listen port', gui.SpinBox(8082, 1025, 65535) )
+        self.add_field_with_label( self.KEY_MULTIPLE_INSTANCE, 'Use single App instance for multiple users', gui.CheckBox(True) )
+        self.add_field_with_label( self.KEY_ENABLE_CACHE, 'Enable file caching', gui.CheckBox(True) )
+        self.add_field_with_label( self.KEY_START_BROWSER, 'Start browser automatically', gui.CheckBox(True) )
+        self.add_field_with_label( self.KEY_RESOURCEPATH, 'Additional resource path', gui.TextInput() )
         self.from_dict_to_fields(self.configDict)
     
     def from_dict_to_fields(self, dictionary):
         for key in self.inputs.keys():
             if key in dictionary.keys():
-                self.get_field(key).set_value(dictionary[key])
+                self.get_field(key).set_value( str( dictionary[key] ) )
         
     def from_fields_to_dict(self):
-        for key in self.inputs.keys():
-            self.configDict[key] = self.get_field(key).get_value()
+        self.configDict[self.KEY_PRJ_NAME] = self.get_field(self.KEY_PRJ_NAME).get_value()
+        self.configDict[self.KEY_ADDRESS] = self.get_field(self.KEY_ADDRESS).get_value()
+        self.configDict[self.KEY_PORT] = int( self.get_field(self.KEY_PORT).get_value() )
+        self.configDict[self.KEY_MULTIPLE_INSTANCE] = self.get_field(self.KEY_MULTIPLE_INSTANCE).get_value()
+        self.configDict[self.KEY_ENABLE_CACHE] = self.get_field(self.KEY_ENABLE_CACHE).get_value()
+        self.configDict[self.KEY_START_BROWSER] = self.get_field(self.KEY_START_BROWSER).get_value()
+        self.configDict[self.KEY_RESOURCEPATH] = self.get_field(self.KEY_RESOURCEPATH).get_value()
             
     def confirm_dialog(self):
         """event called pressing on OK button.
@@ -232,9 +247,8 @@ class WidgetHelper(gui.HBox):
         super(WidgetHelper, self).__init__()
         self.style['display'] = 'block'
         self.style['background-color'] = 'white'
-        self.icon = gui.Image('/res/widget_%s.png'%self.widgetClass.__name__, width='auto')
+        self.icon = gui.Image('/res/widget_%s.png'%self.widgetClass.__name__, width='auto', margin='2px')
         self.icon.style['max-width'] = '100%'
-        self.icon.style['margin'] = '2px'
         self.icon.style['image-rendering'] = 'auto'
         self.icon.attributes['draggable'] = 'false'
         self.icon.attributes['ondragstart'] = "event.preventDefault();"
@@ -352,9 +366,8 @@ class WidgetCollection(gui.Widget):
     def __init__(self, appInstance, **kwargs):
         self.appInstance = appInstance
         super(WidgetCollection, self).__init__(**kwargs)
-        
         self.lblTitle = gui.Label("Widgets Toolbox")
-        self.lblTitle.style['font-weight'] = 'bold'
+        self.lblTitle.add_class("DialogTitle")
         self.widgetsContainer = gui.HBox(width='100%', height='85%')
         self.widgetsContainer.style['overflow-y'] = 'scroll'
         self.widgetsContainer.style['overflow-x'] = 'hidden'
@@ -399,14 +412,14 @@ class EditorAttributesGroup(gui.Widget):
     """
     def __init__(self, title, **kwargs):
         super(EditorAttributesGroup, self).__init__(**kwargs)
+        self.add_class('.RaisedFrame')
         self.style['display'] = 'block'
         self.style['overflow'] = 'visible'
         self.opened = True
         self.title = gui.Label(title)
+        self.title.add_class("Title")
         self.title.style['padding-left'] = '32px'
         self.title.style['background-image'] = "url('/res/minus.png')"
-        self.title.style['font-weight'] = 'bold'
-        self.title.style['background-color'] = 'lightgray'
         self.title.style['background-repeat'] = 'no-repeat'
         self.title.style['background-position'] = '5px'
         self.title.set_on_click_listener(self, 'openClose')
@@ -431,8 +444,8 @@ class EditorAttributes(gui.VBox):
         self.style['overflow-y'] = 'scroll'
         self.style['justify-content'] = 'flex-start'
         self.style['-webkit-justify-content'] = 'flex-start'
-        self.titleLabel = gui.Label('Attributes editor')
-        self.titleLabel.style['font-weight'] = 'bold'
+        self.titleLabel = gui.Label('Attributes editor', width='100%')
+        self.titleLabel.add_class("DialogTitle")
         self.infoLabel = gui.Label('Selected widget: None')
         self.infoLabel.style['font-weight'] = 'bold'
         self.append(self.titleLabel)
@@ -519,6 +532,25 @@ class UrlPathInput(gui.Widget):
         self.txtInput.set_value(value)
 
 
+class StringEditor(gui.TextInput):
+    """ This class sends the input directly to the listener, but don't applies the changes
+        to the widget itself in order to avoid to get updated losting the focus.
+        The value will be committed to the widget itself when blurs.
+    """
+    def __init__(self, **kwargs):
+        super(StringEditor, self).__init__(**kwargs)
+        self.attributes[self.EVENT_ONBLUR] = \
+            "var params={};params['new_value']=document.getElementById('%(id)s').value;" \
+            "sendCallbackParam('%(id)s','%(evt)s',params);" % {'id': id(self), 'evt': self.EVENT_ONCHANGE}
+            
+        self.attributes[self.EVENT_ONKEYUP] = \
+            "var params={};params['new_value']=document.getElementById('%(id)s').value;" \
+            "sendCallbackParam('%(id)s','%(evt)s',params);" % {'id': id(self), 'evt': self.EVENT_ONKEYUP}
+        
+    def onkeyup(self, new_value):
+        return self.eventManager.propagate(self.EVENT_ONCHANGE, [new_value])
+        
+
 #widget that allows to edit a specific html and css attributes
 #   it has a descriptive label, an edit widget (TextInput, SpinBox..) based on the 'type' and a title 
 class EditorAttributeInput(gui.Widget):
@@ -532,8 +564,7 @@ class EditorAttributeInput(gui.Widget):
         self.attributeDict = attributeDict
         self.EVENT_ATTRIB_ONCHANGE = 'on_attribute_changed'
         
-        label = gui.Label(attributeName, width='50%', height=22)
-        label.style['margin'] = '0px'
+        label = gui.Label(attributeName, width='50%', height=22, margin='0px')
         label.style['overflow'] = 'hidden'
         label.style['font-size'] = '13px'
         self.append(label)
@@ -553,14 +584,14 @@ class EditorAttributeInput(gui.Widget):
                     self.inputWidget.append(gui.DropDownItem(value),value)
             if attributeDict['type'] == gui.FileSelectionDialog:
                 self.inputWidget = UrlPathInput(appInstance)
-                
+            
         else: #default editor is string
-            self.inputWidget = gui.TextInput()
+            self.inputWidget = StringEditor()
  
+        self.inputWidget.set_on_change_listener(self,"on_attribute_changed")
         self.inputWidget.set_size('50%','22px')
         self.inputWidget.attributes['title'] = attributeDict['description']
         label.attributes['title'] = attributeDict['description']
-        self.inputWidget.set_on_change_listener(self,"on_attribute_changed")
         self.append(self.inputWidget)
         self.inputWidget.style['float'] = 'right'
     
