@@ -314,7 +314,12 @@ Yes I know that github already provides a list of contributors, but I feel that 
 [Chris Braun](https://github.com/cryzed)
 
 
+Projects using Remi
+===
+[Web based dynamic reconfigure for ROS robots](https://github.com/awesomebytes/web_dyn_reconf)
+
+
 Other Implementations
 ===
 Here are listed other implementations of this library:
-- [**cremi**](https://github.com/cyberpro4/cremi): developed for your C++ projects by [Claudio Cannatà](https://github.com/cyberpro4).
+- [**cremi**](https://github.com/cyberpro4/cremi): (WIP) developed for your C++ projects by [Claudio Cannatà](https://github.com/cyberpro4).
