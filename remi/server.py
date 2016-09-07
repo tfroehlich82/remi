@@ -177,10 +177,13 @@ class WebSocketsHandler(socketserver.StreamRequestHandler):
         t = time.time()
         if (t - self.last_ping) > (0.5*self.timeout):
             self.last_ping = t
-            self.send_message('ping')
+            self.send_message('4') #4==ping
 
     def send_message(self, message):
-        if message != 'ping':
+        if not self.handshake_done:
+            self.log.warning("ignoring message %s (handshake not done)" % message[:10])
+
+        if message != '4': #4==ping
             self.log.debug('send_message: %s... -> %s' % (message[:10], self.client_address))
         out = bytearray()
         out.append(129)
@@ -220,7 +223,7 @@ class WebSocketsHandler(socketserver.StreamRequestHandler):
         if message == 'pong':
             return
 
-        self.send_message('ack')
+        self.send_message('3') #3==ack
 
         with update_lock:
             try:
@@ -273,7 +276,7 @@ def parse_parametrs(p):
     return ret
     
     
-def gui_update_children_version(client, leaf):
+def gui_update_children_version(leaf):
     """ This function is called when a leaf is updated by gui_updater
         and so, children does not need graphical update, it is only
         required to update the last version of the dictionaries
@@ -286,7 +289,7 @@ def gui_update_children_version(client, leaf):
     leaf.children.__lastversion__ = leaf.children.__version__
     
     for subleaf in leaf.children.values():
-        gui_update_children_version(client, subleaf)
+        gui_update_children_version(subleaf)
     
     
 def gui_updater(client, leaf, no_update_because_new_subchild=False):
@@ -306,10 +309,10 @@ def gui_updater(client, leaf, no_update_because_new_subchild=False):
                 try:
                     # here a new widget is found, but it must be added to the client representation
                     # updating the parent widget
-                    if 'parent_widget' in leaf.attributes:
-                        parent_widget_id = leaf.attributes['parent_widget']
+                    if 'data-parent-widget' in leaf.attributes:
+                        parent_widget_id = leaf.attributes['data-parent-widget']
                         html = get_method_by_id(parent_widget_id).repr(client)
-                        ws.send_message('update_widget,' + parent_widget_id + ',' + to_websocket(html))
+                        ws.send_message('1' + parent_widget_id + ',' + to_websocket(html)) #1==update_widget message
                     else:
                         log.debug('the new widget seems to have no parent...')
                     # adding new widget with insert_widget causes glitches, so is preferred to update the parent widget
@@ -322,16 +325,16 @@ def gui_updater(client, leaf, no_update_because_new_subchild=False):
             (leaf.children.__lastversion__ != leaf.children.__version__):
 
         __id = leaf.identifier
+        html = leaf.repr(client)
         for ws in client.websockets:
             log.debug('update_widget: %s type: %s' %(__id, type(leaf)))
             try:
-                html = leaf.repr(client)
-                ws.send_message('update_widget,' + __id + ',' + to_websocket(html))
+                ws.send_message('1' + __id + ',' + to_websocket(html)) #1==update_widget message
             except:
                 client.websockets.remove(ws)
         
         # update children dictionaries __version__ in order to avoid nested updates
-        gui_update_children_version(client, leaf)
+        gui_update_children_version(leaf)
         return True
     
     changed_or = False
@@ -364,25 +367,19 @@ class _UpdateThread(threading.Thread):
             update_event.wait()
             with update_lock:
                 try:
+
                     for client in clients.values():
                         if not hasattr(client, 'root'):
                             continue
-                        # here we check if the root window has changed
-                        if not hasattr(client, 'old_root_window') or client.old_root_window != client.root:
-                            for ws in client.websockets:
-                                try:
-                                    html = client.root.repr(client)
-                                    ws.send_message('show_window,' + client.root.identifier + ',' + to_websocket(html))
-                                except:
-                                    client.websockets.remove(ws)
-                        client.old_root_window = client.root
-                        gui_updater(client, client.root)
+                        
+                        if client.websockets:
+                            gui_updater(client, client.root)
 
-                        for ws in client.websockets:
-                            ws.ping()
+                            for ws in client.websockets:
+                                ws.ping()
 
                         client.idle()
-                        
+                            
                 except Exception as e:
                     log.error('error updating gui', exc_info=True)
 
@@ -398,6 +395,9 @@ class App(BaseHTTPRequestHandler, object):
         - function calls with parameters
         - file requests
     """
+
+    re_static_file = re.compile(r"^/res/([-_.\w\d]+)\?{0,1}(?:[\w\d]*)")  # https://regex101.com/r/uK1sX1/1
+    re_attr_call = re.compile(r"^\/*(\w+)\/(\w+)\?{0,1}(\w*\={1}\w+\${0,1})*$")
 
     def __init__(self, request, client_address, server, **app_args):
         self._app_args = app_args
@@ -437,7 +437,7 @@ class App(BaseHTTPRequestHandler, object):
 
         # refreshing the script every instance() call, beacuse of different net_interface_ip connections
         # can happens for the same 'k'
-        clients[k].script_header = """
+        clients[k].script_footer = """
 <script>
 // from http://stackoverflow.com/questions/5515869/string-length-in-bytes-in-javascript
 // using UTF8 strings I noticed that the javascript .length of a string returned less 
@@ -486,42 +486,31 @@ openSocket();
 
 function websocketOnMessage (evt){
     var received_msg = evt.data;
-    /*console.debug('Message is received:' + received_msg);*/
-    var s = received_msg.split(',');
-    var command = s[0];
-    var index = received_msg.indexOf(',')+1;
-    received_msg = received_msg.substr(index,received_msg.length-index);/*removing the command from the message*/
-    index = received_msg.indexOf(',')+1;
-    var content = received_msg.substr(index,received_msg.length-index);
 
-    /*console.debug('command:' + command);*/
-    /*console.debug('content:' + content);*/
-
-    if( command=='show_window' ){
+    if( received_msg[0]=='0' ){ /*show_window*/
+        var index = received_msg.indexOf(',')+1;
+        /*var idRootNodeWidget = received_msg.substr(0,index-1);*/
+        var content = received_msg.substr(index,received_msg.length-index);
+    
         document.body.innerHTML = '<div id="loading" style="display: none;"><div id="loading-animation"></div></div>';
         document.body.innerHTML += decodeURIComponent(content);
-    }else if( command=='update_widget'){
-        var elem = document.getElementById(s[1]);
+    }else if( received_msg[0]=='1' ){ /*update_widget*/
         var index = received_msg.indexOf(',')+1;
+        var idElem = received_msg.substr(1,index-2);
+        var content = received_msg.substr(index,received_msg.length-index);
+
+        var elem = document.getElementById(idElem);
         elem.insertAdjacentHTML('afterend',decodeURIComponent(content));
         elem.parentElement.removeChild(elem);
-    }else if( command=='insert_widget'){
-        if( document.getElementById(s[1])==null ){
-            /*the content contains an additional field that we have to remove*/
-            index = content.indexOf(',')+1;
-            content = content.substr(index,content.length-index);
-            var elem = document.getElementById(s[2]);
-            elem.innerHTML = elem.innerHTML + decodeURIComponent(content);
-        }
-    }else if( command=='javascript'){
+    }else if( received_msg[0]=='2' ){ /*javascript*/
+        var content = received_msg.substr(1,received_msg.length-1);
         try{
-            console.debug("executing js code: " + received_msg);
             eval(received_msg);
         }catch(e){console.debug(e.message);};
-    }else if( command=='ack'){
+    }else if( received_msg[0]=='3' ){ /*ack*/
         pendingSendMessages.shift() /*remove the oldest*/
         if(comTimeout!=null)clearTimeout(comTimeout);
-    }else if( command=='ping'){
+    }else if( received_msg[0]=='4' ){ /*ping*/
         ws.send('pong');
     }
 };
@@ -667,12 +656,24 @@ function uploadFile(widgetID, eventSuccess, eventFail, eventData, file){
 };
 </script>""" % (net_interface_ip, wsport, pending_messages_queue_length, websocket_timeout_timer_ms)
 
+        # add app specific javascript
+        try:
+            clients[k].script_footer += self._app_args['script_footer']
+        except KeyError:
+            pass
+
         # add any app specific headers
         clients[k].html_header = self._app_args.get('html_header', '\n')
         clients[k].html_footer = self._app_args.get('html_footer', '\n')
 
         # add client styling
-        clients[k].css_header = self._app_args.get('css_header', "<link href='/res/style.css' rel='stylesheet' />\n")
+        try:
+            clients[k].css_header = self._app_args['css_header']
+        except KeyError:
+            # use the default css, but append a version based on its hash, to stop browser caching
+            with open(self._get_static_file('style.css'), 'rb') as f:
+                md5 = hashlib.md5(f.read()).hexdigest()
+            clients[k].css_header = "<link href='/res/style.css?%s' rel='stylesheet' />\n" % md5
 
         if not hasattr(clients[k], 'websockets'):
             clients[k].websockets = []
@@ -686,7 +687,20 @@ function uploadFile(widgetID, eventSuccess, eventFail, eventData, file){
         """ Idle function called every UPDATE_INTERVAL before the gui update.
             Useful to schedule tasks. """
         pass
-        
+    
+    def set_root_widget(self, widget):
+        global update_lock, update_event
+        update_event.wait()
+        self.root = widget
+        # here we check if the root window has changed
+        for ws in self.websockets:
+            try:
+                html = self.root.repr(self)
+                ws.send_message('0' + self.root.identifier + ',' + to_websocket(html)) ##0==show_window message
+            except:
+                self.websockets.remove(ws)
+        update_event.clear()
+
     def send_spontaneous_websocket_message(self, message):
         """this code allows to send spontaneous messages to the clients.
            It can be considered thread-safe because can be called in two contexts:
@@ -725,7 +739,7 @@ function uploadFile(widgetID, eventSuccess, eventFail, eventData, file){
                 });
             }
         """%{'title': title, 'content': content, 'icon': icon}
-        self.send_spontaneous_websocket_message('javascript,' + code)
+        self.send_spontaneous_websocket_message('2' + code) #2==javascript
     
     def do_POST(self):
         self._instance()
@@ -798,15 +812,32 @@ function uploadFile(widgetID, eventSuccess, eventFail, eventData, file){
             path = str(unquote(self.path))
             self._process_all(path)
 
+    def _get_static_file(self, filename):
+
+        static_paths = [os.path.join(os.path.dirname(__file__), 'res')]
+        static_paths.extend(self._app_args.get('static_paths', ()))
+
+        for s in reversed(static_paths):
+            path = os.path.join(s, filename)
+            if os.path.exists(path):
+                return path
+
     def _process_all(self, function):
+        global update_lock
+
         self.log.debug('get: %s' % function)
-        static_file = re.match(r"^/*res\/(.*)$", function)
-        attr_call = re.match(r"^\/*(\w+)\/(\w+)\?{0,1}(\w*\={1}\w+\&{0,1})*$", function)
+
+        static_file = self.re_static_file.match(function)
+        attr_call = self.re_attr_call.match(function)
+
         if (function == '/') or (not function):
-            # build the root page once if necessary
-            should_call_main = not hasattr(self.client, 'root')
-            if should_call_main:
-                self.client.root = self.main(*self.server.userdata)
+            with update_lock:
+                # build the root page once if necessary
+                should_call_main = not hasattr(self.client, 'root')
+                if should_call_main:
+                    self.client.root = self.main(*self.server.userdata)
+                # render the HTML
+                html = self.client.root.repr(self.client)
 
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
@@ -819,30 +850,18 @@ function uploadFile(widgetID, eventSuccess, eventFail, eventData, file){
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">"""))
             self.wfile.write(encode_text(self.client.css_header))
             self.wfile.write(encode_text(self.client.html_header))
+            self.wfile.write(encode_text("\n<title>%s</title>\n" % self.server.title))
             self.wfile.write(encode_text("\n</head>\n<body>\n"))
             self.wfile.write(encode_text('<div id="loading"><div id="loading-animation"></div></div>'))
-            # render the HTML replacing any local absolute references to the correct IP of this instance
-            html = self.client.root.repr(self.client)
             self.wfile.write(encode_text(html))
             self.wfile.write(encode_text(self.client.html_footer))
-            self.wfile.write(encode_text(self.client.script_header))
+            self.wfile.write(encode_text(self.client.script_footer))
             self.wfile.write(encode_text("</body>\n</html>"))
         elif static_file:
-            static_paths = [os.path.join(os.path.dirname(__file__), 'res')]
-            static_paths.extend(self._app_args.get('static_paths', ()))
-
-            filename = None
-            found = False
-            for s in reversed(static_paths):
-                filename = os.path.join(s, static_file.groups()[0])
-                if os.path.exists(filename):
-                    found = True
-                    break
-
-            if not found:
+            filename = self._get_static_file(static_file.groups()[0])
+            if not filename:
                 self.send_response(404)
                 return
-
             mimetype,encoding = mimetypes.guess_type(filename)
             self.send_response(200)
             self.send_header('Content-type', mimetype if mimetype else 'application/octet-stream')
@@ -889,8 +908,8 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
 
     def __init__(self, server_address, RequestHandlerClass, websocket_address,
                  auth, multiple_instance, enable_file_cache, update_interval,
-                 websocket_timeout_timer_ms, host_name, pending_messages_queue_length, 
-                 *userdata):
+                 websocket_timeout_timer_ms, host_name, pending_messages_queue_length,
+                 title, *userdata):
         HTTPServer.__init__(self, server_address, RequestHandlerClass)
         self.websocket_address = websocket_address
         self.auth = auth
@@ -900,15 +919,17 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
         self.websocket_timeout_timer_ms = websocket_timeout_timer_ms
         self.host_name = host_name
         self.pending_messages_queue_length = pending_messages_queue_length
+        self.title = title
         self.userdata = userdata
 
 
 class Server(object):
-    def __init__(self, gui_class, start=True, address='127.0.0.1', port=8081, username=None, password=None,
+    def __init__(self, gui_class, title='', start=True, address='127.0.0.1', port=8081, username=None, password=None,
                  multiple_instance=False, enable_file_cache=True, update_interval=0.1, start_browser=True,
                  websocket_timeout_timer_ms=1000, websocket_port=0, host_name=None,
                  pending_messages_queue_length=1000, userdata=()):
         self._gui = gui_class
+        self._title = title or gui_class.__name__
         self._wsserver = self._sserver = None
         self._wsth = self._sth = None
         self._base_address = ''
@@ -932,6 +953,11 @@ class Server(object):
 
         if start:
             self.start(*userdata)
+            self.serve_forever()
+
+    @property
+    def title(self):
+        return self._title
 
     @property
     def address(self):
@@ -952,8 +978,8 @@ class Server(object):
                                            (wshost, wsport), self._auth,
                                            self._multiple_instance, self._enable_file_cache,
                                            self._update_interval, self._websocket_timeout_timer_ms,
-                                           self._host_name, self._pending_messages_queue_length, 
-                                           *userdata)
+                                           self._host_name, self._pending_messages_queue_length,
+                                           self._title, *userdata)
         shost, sport = self._sserver.socket.getsockname()[:2]
         # when listening on multiple net interfaces the browsers connects to localhost
         if shost == '0.0.0.0':
@@ -984,6 +1010,8 @@ class Server(object):
             # signal.pause() is missing for Windows; wait 1ms and loop instead
             while True:
                 time.sleep(1)
+        except KeyboardInterrupt:
+            pass
 
     def stop(self):
         self._wsserver.shutdown()
@@ -994,13 +1022,12 @@ class Server(object):
 
 class StandaloneServer(Server):
 
-    def __init__(self, gui_class, application_name='', width=800, height=600, resizable=True, fullscreen=False, start=True, userdata=()):
-        Server.__init__(self, gui_class, start=False, address='127.0.0.1', port=0, username=None, password=None,
+    def __init__(self, gui_class, title='', width=800, height=600, resizable=True, fullscreen=False, start=True, userdata=()):
+        Server.__init__(self, gui_class, title=title, start=False, address='127.0.0.1', port=0, username=None, password=None,
                  multiple_instance=False, enable_file_cache=True, update_interval=0.1, start_browser=False,
                  websocket_timeout_timer_ms=1000, websocket_port=0, host_name=None,
                  pending_messages_queue_length=1000, userdata=userdata)
 
-        self._application_name = application_name or gui_class.__name__
         self._application_conf = {'width':width, 'height':height, 'resizable':resizable, 'fullscreen':fullscreen}
 
         if start:
@@ -1009,18 +1036,15 @@ class StandaloneServer(Server):
     def serve_forever(self):
         import webview
         Server.start(self)
-        webview.create_window(self._application_name, self.address, **self._application_conf)
+        webview.create_window(self.title, self.address, **self._application_conf)
         Server.stop(self)
 
 
 def start(mainGuiClass, **kwargs):
     """This method starts the webserver with a specific App subclass."""
-    try:
-        debug = kwargs.pop('debug')
-    except KeyError:
-        debug = False
+    debug = kwargs.pop('debug', False)
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO,
                         format='%(name)-16s %(levelname)-8s %(message)s')
     s = Server(mainGuiClass, start=True, **kwargs)
-    s.serve_forever()
+
 
