@@ -276,74 +276,18 @@ def parse_parametrs(p):
     return ret
     
     
-def gui_update_children_version(leaf):
-    """ This function is called when a leaf is updated by gui_updater
-        and so, children does not need graphical update, it is only
-        required to update the last version of the dictionaries
-    """
-    if not hasattr(leaf, 'attributes'):
-        return False
-    
-    leaf.attributes.__lastversion__ = leaf.attributes.__version__
-    leaf.style.__lastversion__ = leaf.style.__version__
-    leaf.children.__lastversion__ = leaf.children.__version__
-    
-    for subleaf in leaf.children.values():
-        gui_update_children_version(subleaf)
-    
-    
-def gui_updater(client, leaf, no_update_because_new_subchild=False):
-    if not hasattr(leaf, 'attributes'):
-        return False
-
-    # if the widget appears here for the first time
-    if not hasattr(leaf.attributes, '__lastversion__'):
-        leaf.attributes.__lastversion__ = leaf.attributes.__version__
-        leaf.style.__lastversion__ = leaf.style.__version__
-        leaf.children.__lastversion__ = leaf.children.__version__
-
-        if not no_update_because_new_subchild:
-            no_update_because_new_subchild = True
-            # we ensure that the clients have an updated version
-            for ws in client.websockets:
-                try:
-                    # here a new widget is found, but it must be added to the client representation
-                    # updating the parent widget
-                    if 'data-parent-widget' in leaf.attributes:
-                        parent_widget_id = leaf.attributes['data-parent-widget']
-                        html = get_method_by_id(parent_widget_id).repr(client)
-                        ws.send_message('1' + parent_widget_id + ',' + to_websocket(html)) #1==update_widget message
-                    else:
-                        log.debug('the new widget seems to have no parent...')
-                    # adding new widget with insert_widget causes glitches, so is preferred to update the parent widget
-                    #ws.send_message('insert_widget,' + __id + ',' + parent_widget_id + ',' + repr(leaf))
-                except:
-                    client.websockets.remove(ws)
-
-    if (leaf.style.__lastversion__ != leaf.style.__version__) or \
-            (leaf.attributes.__lastversion__ != leaf.attributes.__version__) or \
-            (leaf.children.__lastversion__ != leaf.children.__version__):
-
-        __id = leaf.identifier
-        html = leaf.repr(client)
+def gui_updater(client, node):
+    changed_widgets = {} #key = widget instance, value = html representation
+    node.repr(client, changed_widgets)
+    for widget in changed_widgets.keys():
+        html = changed_widgets[widget]
+        __id = str(widget.identifier)
         for ws in client.websockets:
-            log.debug('update_widget: %s type: %s' %(__id, type(leaf)))
+            log.debug('update_widget: %s type: %s' %(__id, type(widget)))
             try:
                 ws.send_message('1' + __id + ',' + to_websocket(html)) #1==update_widget message
             except:
                 client.websockets.remove(ws)
-        
-        # update children dictionaries __version__ in order to avoid nested updates
-        gui_update_children_version(leaf)
-        return True
-    
-    changed_or = False
-    # checking if subwidgets changed
-    for subleaf in leaf.children.values():
-        changed_or |= gui_updater(client, subleaf, no_update_because_new_subchild)
-        
-    # propagating the children changed flag
-    return changed_or
 
 
 class _UpdateThread(threading.Thread):
@@ -495,6 +439,7 @@ function websocketOnMessage (evt){
         document.body.innerHTML = '<div id="loading" style="display: none;"><div id="loading-animation"></div></div>';
         document.body.innerHTML += decodeURIComponent(content);
     }else if( received_msg[0]=='1' ){ /*update_widget*/
+        var focusedElement = document.activeElement.id;
         var index = received_msg.indexOf(',')+1;
         var idElem = received_msg.substr(1,index-2);
         var content = received_msg.substr(index,received_msg.length-index);
@@ -502,6 +447,11 @@ function websocketOnMessage (evt){
         var elem = document.getElementById(idElem);
         elem.insertAdjacentHTML('afterend',decodeURIComponent(content));
         elem.parentElement.removeChild(elem);
+        
+        var elemToFocus = document.getElementById(focusedElement);
+        if( elemToFocus != null ){
+            document.getElementById(focusedElement).focus();
+        }
     }else if( received_msg[0]=='2' ){ /*javascript*/
         var content = received_msg.substr(1,received_msg.length-1);
         try{
@@ -1034,17 +984,25 @@ class StandaloneServer(Server):
             self.serve_forever()
 
     def serve_forever(self):
-        import webview
-        Server.start(self)
-        webview.create_window(self.title, self.address, **self._application_conf)
-        Server.stop(self)
+        try:
+            import webview
+            Server.start(self)
+            webview.create_window(self.title, self.address, **self._application_conf)
+            Server.stop(self)
+        except ImportError:
+            raise ImportError('PyWebView is missing. Please install it by:\n    pip install pywebview\n    more info at https://github.com/r0x0r/pywebview')
 
 
 def start(mainGuiClass, **kwargs):
     """This method starts the webserver with a specific App subclass."""
     debug = kwargs.pop('debug', False)
+    standalone = kwargs.pop('standalone', False)
     logging.basicConfig(level=logging.DEBUG if debug else logging.INFO,
                         format='%(name)-16s %(levelname)-8s %(message)s')
-    s = Server(mainGuiClass, start=True, **kwargs)
+    if standalone:
+        s = StandaloneServer(mainGuiClass, start=True, **kwargs)
+    else:
+        s = Server(mainGuiClass, start=True, **kwargs)
+	
 
 
