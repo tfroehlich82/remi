@@ -283,6 +283,10 @@ button:disabled {
     cursor: default;
     color: #9F9F9F;
 }
+ button:active{
+    background: rgb(25, 145, 223);
+    box-shadow: 0 4px 5px 0 rgba(0, 0, 0, .2), 0 1px 1px 0 rgba(0, 0, 0, .12), 0 2px 0px -1px rgba(0, 0, 0, .2);
+}
 .TextInput {
     border: none;
     border-bottom: 1px solid rgba(0, 0, 0, .12);
@@ -615,4 +619,37 @@ input[type='range']:disabled::-moz-range-thumb {
    select {
     font-size: 13px;
    }
+}
+
+ul.TreeView{
+    list-style-type: none;
+    padding: 0;
+    position: relative;
+    display: block;
+}
+.TreeItem{
+    background-repeat: no-repeat;
+    padding-left: 18px;
+    display: block;
+}
+.TreeItem[has-subtree='true'][treeopen='false']{
+    background-image: url('/res/plus.png');
+    background-position-y: 4px;
+}
+.TreeItem[has-subtree='true'][treeopen='true']{
+    background-image: url('/res/minus.png');
+    background-position-y: 4px;
+    border-bottom: 0;
+}
+.TreeItem[treeopen="false"] .TreeView .TreeItem{
+    display: none;
+}
+.TreeItem[treeopen="false"] .TreeView{
+    display: none;
+}
+.TreeItem:hover {
+    background-color: rgba(33, 150, 243, .26);
+}
+.TreeItem[has-subtree='true'][treeopen='true']:hover {
+    background-color: transparent;
 }

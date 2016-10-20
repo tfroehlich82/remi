@@ -34,9 +34,10 @@ proto_code_function = "    def %(funcname)s%(parameters)s:\n        pass\n\n"
 #here the prototype of the main class
 proto_code_main_class = """
 class %(classname)s(App):
-    def __init__(self, *args):
-        super(%(classname)s, self).__init__(*args, static_file_path='%(config_resourcepath)s')
-    
+    def __init__(self, *args, **kwargs):
+        if not 'editing_mode' in kwargs.keys():
+            super(%(classname)s, self).__init__(*args, static_file_path='%(config_resourcepath)s')
+
     def idle(self):
         #idle function called every update cycle
         pass
@@ -61,4 +62,4 @@ proto_style_setup = """%(varname)s.style['%(attrname)s'] = "%(attrvalue)s"\n    
 
 proto_layout_append = "%(parentname)s.append(%(varname)s)\n        "
 
-proto_set_listener = "%(sourcename)s.%(register_function)s(%(listenername)s,'%(listener_function)s')\n        "
+proto_set_listener = "%(sourcename)s.%(register_function)s(%(listenername)s.%(listener_function)s)\n        "

@@ -20,35 +20,27 @@ class MyApp(App):
     def __init__(self, *args):
         super(MyApp, self).__init__(*args)
 
-    def main(self):
-        wid = gui.VBox(width=300, height=300)
-
-        self._items = ("/test/1", "/test/7")
-
-        self.dd = gui.DropDown.new_from_list(self._items, width='80%', height=40)
-        self.list = gui.ListView.new_from_list(self._items, width='80%', height='50%')
-        self.ent = gui.TextInput(width=200, height=30, hint='enter words')
-        self.bt = gui.Button('Update Models', width=200, height=30)
-        self.bt.style['margin'] = 'auto 50px'
-
-        self.bt.set_on_click_listener(self.on_button_pressed)
-
-        # appending a widget to another, the first argument is a string key
-        wid.append(self.dd)
-        wid.append(self.list)
-        wid.append(self.ent)
-        wid.append(self.bt)
+    def main(self, name='world'):
+        wid = gui.VBox(width=300, height=400)
+        
+        self.tree = gui.TreeView(width=200, height=300)
+        self.tree.append(gui.TreeItem("item1", width=100))
+        it2 = gui.TreeItem("item2", width=100)
+        self.tree.append(it2)
+        
+        it2.append(gui.TreeItem("sub item1"))
+        subit2 = gui.TreeItem("sub item2")
+        it2.append(subit2)
+        it2.append(gui.TreeItem("sub item3"))
+        
+        subit2.append(gui.TreeItem("sub sub item1"))
+        subit2.append(gui.TreeItem("sub sub item2"))
+        subit2.append(gui.TreeItem("sub sub item3"))
+        
+        wid.append(self.tree)
 
         # returning the root widget
         return wid
-
-    # listener function
-    def on_button_pressed(self, widget):
-        txt = self.ent.get_text()
-        if txt:
-            self._items = tuple("/test/%s" % i for i in txt.split(' '))
-        self.dd.synchronize_values(self._items)
-        self.list.synchronize_values(self._items)
 
 
 if __name__ == "__main__":
