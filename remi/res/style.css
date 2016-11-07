@@ -629,16 +629,16 @@ ul.TreeView{
 }
 .TreeItem{
     background-repeat: no-repeat;
-    padding-left: 18px;
+    text-indent: 18px;
     display: block;
 }
 .TreeItem[has-subtree='true'][treeopen='false']{
     background-image: url('/res/plus.png');
-    background-position-y: 4px;
+    background-position: 0px 4px;
 }
 .TreeItem[has-subtree='true'][treeopen='true']{
     background-image: url('/res/minus.png');
-    background-position-y: 4px;
+    background-position: 0px 4px;
     border-bottom: 0;
 }
 .TreeItem[treeopen="false"] .TreeView .TreeItem{
@@ -646,6 +646,9 @@ ul.TreeView{
 }
 .TreeItem[treeopen="false"] .TreeView{
     display: none;
+}
+.TreeItem[treeopen="true"] .TreeView{
+    padding-left: 18px;
 }
 .TreeItem:hover {
     background-color: rgba(33, 150, 243, .26);
